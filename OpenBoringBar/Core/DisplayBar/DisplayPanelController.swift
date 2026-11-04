@@ -124,6 +124,8 @@ final class DisplayPanelController {
                 displayID: state.id,
                 with: state.apps,
                 pinnedApps: state.pinnedApps,
+                workspaceGroups: state.workspaceGroups,
+                emptyWorkspaceTarget: state.emptyWorkspaceTarget,
                 barWidth: state.frame.width,
                 launchableApplications: launchableApplications
             )
@@ -225,6 +227,8 @@ final class DisplayPanelController {
         displayID: CGDirectDisplayID,
         with apps: [RunningAppItem],
         pinnedApps: [PinnedAppItem],
+        workspaceGroups: [WorkspaceGroup],
+        emptyWorkspaceTarget: String?,
         barWidth: CGFloat,
         launchableApplications: [LaunchableApplicationItem]
     ) {
@@ -237,6 +241,26 @@ final class DisplayPanelController {
                 launchableApplications: launchableApplications,
                 isAutoCollapseEnabled: isAutoCollapseEnabled,
                 hidesOffScreenWindows: barManager.hidesOffScreenWindows,
+                isAeroSpaceAvailable: barManager.isAeroSpaceAvailable,
+                showsWorkspaces: barManager.showsWorkspaces,
+                pillsFollowWorkspace: barManager.pillsFollowWorkspace,
+                workspaceGroups: workspaceGroups,
+                emptyWorkspaceTarget: emptyWorkspaceTarget,
+                onSwitchWorkspace: { [barManager] workspace in
+                    barManager.switchToWorkspace(workspace)
+                },
+                onFocusWorkspaceWindow: { [barManager] windowID in
+                    barManager.focusAeroSpaceWindow(windowID)
+                },
+                onMoveWindowToWorkspace: { [barManager] windowID, workspace in
+                    barManager.moveWindow(windowID, toWorkspace: workspace)
+                },
+                onShowsWorkspacesToggled: { [barManager] isEnabled in
+                    barManager.setShowsWorkspaces(isEnabled)
+                },
+                onPillsFollowWorkspaceToggled: { [barManager] isEnabled in
+                    barManager.setPillsFollowWorkspace(isEnabled)
+                },
                 onOpenPinnedApp: { [barManager] item in
                     barManager.openPinnedApp(item)
                 },
@@ -249,8 +273,12 @@ final class DisplayPanelController {
                 onPinDisplayModeChanged: { [barManager] mode in
                     barManager.setPinDisplayMode(mode)
                 },
-                onSwitch: { [barManager] processID in
-                    barManager.switchToApp(processID: processID, displayID: displayID)
+                onSwitch: { [barManager] app in
+                    if let windowID = app.windowID {
+                        barManager.focusAeroSpaceWindow(windowID)
+                    } else {
+                        barManager.switchToApp(processID: app.processID, displayID: displayID)
+                    }
                 },
                 onShowAppMenu: { [weak self] processID, event, view in
                     self?.showAppMenu(
@@ -491,6 +519,7 @@ final class DisplayPanelController {
             y: screen.frame.minY,
             width: screen.frame.width,
             height: BarLayoutConstants.panelHeight
+                + (barManager.isWorkspaceRowVisible ? BarLayoutConstants.workspaceRowHeight : 0)
         )
     }
 
@@ -634,14 +663,15 @@ final class DisplayPanelController {
     /// is kept within a workspace. Windows with no known workspace go last.
     private static func sortedByWorkspace(
         _ windows: [(windowID: CGWindowID, title: String)],
-        workspaces: WindowWorkspaceSnapshot
+        workspaces: AeroSpaceState
     ) -> [(windowID: CGWindowID, title: String)] {
-        guard !workspaces.workspaceByWindowID.isEmpty else {
+        let workspaceByWindowID = workspaces.workspaceByWindowID
+        guard !workspaceByWindowID.isEmpty else {
             return windows
         }
 
         func rank(_ windowID: CGWindowID) -> (Int, String) {
-            guard let workspace = workspaces.workspaceByWindowID[windowID] else {
+            guard let workspace = workspaceByWindowID[windowID] else {
                 return (2, "")
             }
             return (workspace == workspaces.focusedWorkspace ? 0 : 1, workspace)
@@ -689,11 +719,12 @@ final class DisplayPanelController {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let workspaces = barManager.windowWorkspaces()
+        let workspaces = barManager.currentAeroSpaceState()
         let windows = Self.sortedByWorkspace(
             barManager.windowTitles(for: processID, on: displayID),
             workspaces: workspaces
         )
+        let workspaceByWindowID = workspaces.workspaceByWindowID
         for window in windows {
             let item = ClosureMenuItem(title: window.title) { [weak self] in
                 self?.barManager.activateWindow(
@@ -701,7 +732,7 @@ final class DisplayPanelController {
                     windowID: window.windowID
                 )
             }
-            if let workspace = workspaces.workspaceByWindowID[window.windowID] {
+            if let workspace = workspaceByWindowID[window.windowID] {
                 item.attributedTitle = Self.windowMenuTitle(
                     window.title,
                     workspace: workspace,

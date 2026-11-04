@@ -56,3 +56,15 @@ validation_scenarios:
       - with_aerospace_put_app_on_inactive_workspace
       - verify_no_pill_and_window_not_resized
       - toggle_hide_off_screen_windows_off_and_verify_pill_returns
+
+  - id: aerospace_workspace_row
+    title: AeroSpace workspace row
+    required: false
+    steps:
+      - with_aerospace_verify_row_lists_non_empty_and_visible_workspaces
+      - click_workspace_name_and_icon_and_verify_switch_and_focus
+      - drag_icon_to_other_group_and_to_plus_and_verify_window_moved
+      - toggle_show_workspaces_off_and_verify_bar_height_44
+      - with_pills_follow_workspace_verify_one_pill_per_window_and_click_focuses_it
+      - drag_pill_onto_workspace_group_and_verify_window_moved
+

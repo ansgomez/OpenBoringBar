@@ -17,11 +17,21 @@ struct DisplayBottomBarView: View {
     let launchableApplications: [LaunchableApplicationItem]
     let isAutoCollapseEnabled: Bool
     let hidesOffScreenWindows: Bool
+    let isAeroSpaceAvailable: Bool
+    let showsWorkspaces: Bool
+    let pillsFollowWorkspace: Bool
+    let workspaceGroups: [WorkspaceGroup]
+    let emptyWorkspaceTarget: String?
+    let onSwitchWorkspace: (String) -> Void
+    let onFocusWorkspaceWindow: (CGWindowID) -> Void
+    let onMoveWindowToWorkspace: (CGWindowID, String) -> Void
+    let onShowsWorkspacesToggled: (Bool) -> Void
+    let onPillsFollowWorkspaceToggled: (Bool) -> Void
     let onOpenPinnedApp: (PinnedAppItem) -> Void
     let onUnpinPinnedApp: (PinnedAppItem) -> Void
     let onMovePinnedApp: (PinnedAppItem, PinMove) -> Void
     let onPinDisplayModeChanged: (PinDisplayMode) -> Void
-    let onSwitch: (pid_t) -> Void
+    let onSwitch: (RunningAppItem) -> Void
     let onShowAppMenu: (pid_t, NSEvent, NSView) -> Void
     let onOpenApplication: (URL) -> Void
     let onAppHoverChanged: (pid_t?, CGRect?) -> Void
@@ -33,7 +43,7 @@ struct DisplayBottomBarView: View {
     @State private var isApplicationLauncherPresented = false
 
     private var appLayoutAnimationKeys: [String] {
-        apps.map { "\($0.processID)-\($0.name)" }
+        apps.map { "\($0.id)-\($0.name)" }
     }
 
     var body: some View {
@@ -45,82 +55,99 @@ struct DisplayBottomBarView: View {
                         .stroke(Color.white.opacity(0.55), lineWidth: 1)
                 )
 
-            HStack(spacing: 8) {
+            VStack(spacing: 0) {
+                if isAeroSpaceAvailable && showsWorkspaces {
+                    WorkspaceRowView(
+                        groups: workspaceGroups,
+                        emptyWorkspaceTarget: emptyWorkspaceTarget,
+                        onSwitchWorkspace: onSwitchWorkspace,
+                        onFocusWindow: onFocusWorkspaceWindow,
+                        onMoveWindow: onMoveWindowToWorkspace
+                    )
+                    .frame(height: BarLayoutConstants.workspaceRowHeight)
+
+                    Divider()
+                        .padding(.horizontal, 8)
+                }
+
+                HStack(spacing: 8) {
 // Pseudo-requirement: users can already open the app they want with Command + Space, so we shouldn’t blindly copy BoringBar wholesale.
 //                applicationLauncherButton
 //
 //                Divider()
 //                    .padding(.vertical, 9)
 
-                if !pinnedApps.isEmpty {
-                    DisplayBarPinnedStrip(
-                        pinnedApps: pinnedApps,
-                        maxWidth: pinStripMaxWidth,
-                        onOpen: onOpenPinnedApp,
-                        onUnpin: onUnpinPinnedApp,
-                        onMove: onMovePinnedApp
-                    )
+                    if !pinnedApps.isEmpty {
+                        DisplayBarPinnedStrip(
+                            pinnedApps: pinnedApps,
+                            maxWidth: pinStripMaxWidth,
+                            onOpen: onOpenPinnedApp,
+                            onUnpin: onUnpinPinnedApp,
+                            onMove: onMovePinnedApp
+                        )
 
-                    Divider()
-                        .padding(.vertical, 9)
-                }
+                        Divider()
+                            .padding(.vertical, 9)
+                    }
 
-                Group {
-                    if apps.isEmpty {
-                        Text("No windows on this display")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.trailing, 10)
+                    Group {
+                        if apps.isEmpty {
+                            Text("No windows on this display")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.trailing, 10)
+                                .transition(
+                                    .asymmetric(
+                                        insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                        removal: .opacity
+                                    )
+                                )
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 5) {
+                                    ForEach(apps) { app in
+                                        DisplayBarAppPill(
+                                            app: app,
+                                            onSwitch: onSwitch,
+                                            onHoverChanged: onAppHoverChanged
+                                        )
+                                        .overlay(
+                                            DisplayBarPillRightClickCatcher { event, view in
+                                                onShowAppMenu(app.processID, event, view)
+                                            }
+                                        )
+                                        .transition(
+                                            .asymmetric(
+                                                insertion: .opacity.combined(with: .scale(scale: 0.92)),
+                                                removal: .opacity
+                                            )
+                                        )
+                                    }
+                                }
+                                .padding(.trailing, 10)
+                            }
+                            .scrollBounceBehavior(.basedOnSize)
                             .transition(
                                 .asymmetric(
                                     insertion: .opacity.combined(with: .move(edge: .bottom)),
                                     removal: .opacity
                                 )
                             )
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 5) {
-                                ForEach(apps) { app in
-                                    DisplayBarAppPill(
-                                        app: app,
-                                        onSwitch: onSwitch,
-                                        onHoverChanged: onAppHoverChanged
-                                    )
-                                    .overlay(
-                                        DisplayBarPillRightClickCatcher { event, view in
-                                            onShowAppMenu(app.processID, event, view)
-                                        }
-                                    )
-                                    .transition(
-                                        .asymmetric(
-                                            insertion: .opacity.combined(with: .scale(scale: 0.92)),
-                                            removal: .opacity
-                                        )
-                                    )
-                                }
-                            }
-                            .padding(.trailing, 10)
                         }
-                        .scrollBounceBehavior(.basedOnSize)
-                        .transition(
-                            .asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                removal: .opacity
-                            )
-                        )
                     }
                 }
+                .padding(.leading, 8)
+                .animation(
+                    DisplayBottomBarAnimation.contentSwap,
+                    value: apps.isEmpty
+                )
+                .animation(
+                    DisplayBottomBarAnimation.appListMutation,
+                    value: appLayoutAnimationKeys
+                )
+                .frame(height: BarLayoutConstants.panelHeight)
             }
-            .padding(.leading, 8)
-            .animation(
-                DisplayBottomBarAnimation.contentSwap,
-                value: apps.isEmpty
-            )
-            .animation(
-                DisplayBottomBarAnimation.appListMutation,
-                value: appLayoutAnimationKeys
-            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onHover(perform: onBarHoverChanged)
@@ -142,6 +169,24 @@ struct DisplayBottomBarView: View {
                 set: onAutoCollapseToggled
             )
         )
+
+        if isAeroSpaceAvailable {
+            Toggle(
+                "Show Workspaces",
+                isOn: Binding(
+                    get: { showsWorkspaces },
+                    set: onShowsWorkspacesToggled
+                )
+            )
+
+            Toggle(
+                "Pills Follow Workspace",
+                isOn: Binding(
+                    get: { pillsFollowWorkspace },
+                    set: onPillsFollowWorkspaceToggled
+                )
+            )
+        }
 
         Toggle(
             "Hide Off-Screen Windows",
@@ -328,13 +373,13 @@ private struct DisplayBarAppPill: View {
     private static let appNameMaxWidth: CGFloat = 140
 
     let app: RunningAppItem
-    let onSwitch: (pid_t) -> Void
+    let onSwitch: (RunningAppItem) -> Void
     let onHoverChanged: (pid_t?, CGRect?) -> Void
 
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: { onSwitch(app.processID) }) {
+        Button(action: { onSwitch(app) }) {
             HStack(spacing: 8) {
                 DisplayBarAppIcon(processID: app.processID)
 
@@ -400,6 +445,13 @@ private struct DisplayBarAppPill: View {
             )
         }
         .buttonStyle(.plain)
+        // Per-window pills (Pills Follow Workspace) can be dropped on a
+        // workspace in the workspace row.
+        .windowDragSource(
+            windowID: app.windowID,
+            previewIcon: NSRunningApplication(processIdentifier: app.processID)?.icon
+                ?? NSWorkspace.shared.icon(for: .applicationBundle)
+        )
         .animation(
             DisplayBottomBarAnimation.appStateChange,
             value: app.isFrontmost

@@ -9,7 +9,7 @@ final class BarManager: ObservableObject {
     private let eventBus: AppEventBus
     private let installedApplicationProvider: InstalledApplicationProviding
     private let windowPreviewProvider: WindowPreviewProviding
-    private let windowWorkspaceProvider: WindowWorkspaceProviding
+    private let workspaceManager: AeroSpaceWorkspaceManager
     private let dockNotificationBadgeProvider: DockNotificationBadgeProviding
     private let displayStateBuilder: BarDisplayStateBuilder
     private let accessibilityObserverManager: BarAccessibilityObserverManager
@@ -32,7 +32,7 @@ final class BarManager: ObservableObject {
         eventBus: AppEventBus,
         installedApplicationProvider: InstalledApplicationProviding = InstalledApplicationProvider(),
         windowPreviewProvider: WindowPreviewProviding = WindowPreviewProvider(),
-        windowWorkspaceProvider: WindowWorkspaceProviding = WindowWorkspaceProvider(),
+        workspaceManager: AeroSpaceWorkspaceManager = AeroSpaceWorkspaceManager(),
         dockNotificationBadgeProvider: DockNotificationBadgeProviding = DockNotificationBadgeProvider(),
         displayStateBuilder: BarDisplayStateBuilder = BarDisplayStateBuilder(),
         accessibilityObserverManager: BarAccessibilityObserverManager = BarAccessibilityObserverManager(),
@@ -46,7 +46,7 @@ final class BarManager: ObservableObject {
         self.eventBus = eventBus
         self.installedApplicationProvider = installedApplicationProvider
         self.windowPreviewProvider = windowPreviewProvider
-        self.windowWorkspaceProvider = windowWorkspaceProvider
+        self.workspaceManager = workspaceManager
         self.dockNotificationBadgeProvider = dockNotificationBadgeProvider
         self.displayStateBuilder = displayStateBuilder
         self.accessibilityObserverManager = accessibilityObserverManager
@@ -60,8 +60,14 @@ final class BarManager: ObservableObject {
 
         self.accessibilityObserverManager.onObservedChange = { [weak self] in
             self?.scheduleDisplayRefresh()
+            // Windows opened, closed, moved or retitled: AeroSpace may have
+            // re-tiled. Throttled, since these events can come in bursts.
+            self?.workspaceManager.refreshThrottled()
         }
         self.dockNotificationBadgeProvider.onBadgeStateChanged = { [weak self] in
+            self?.scheduleDisplayRefresh()
+        }
+        self.workspaceManager.onStateChanged = { [weak self] in
             self?.scheduleDisplayRefresh()
         }
 
@@ -72,6 +78,7 @@ final class BarManager: ObservableObject {
 
         refreshDisplayStates()
         refreshLaunchableApplications()
+        self.workspaceManager.start()
     }
 
     deinit {
@@ -379,9 +386,106 @@ final class BarManager: ObservableObject {
         windowPreviewProvider.windowTitles(for: processID, displayID: displayID)
     }
 
-    /// AeroSpace workspace of each window, if AeroSpace is installed.
-    func windowWorkspaces() -> WindowWorkspaceSnapshot {
-        windowWorkspaceProvider.fetchSnapshot()
+    // MARK: AeroSpace workspaces
+
+    var isAeroSpaceAvailable: Bool { workspaceManager.isAvailable }
+    var showsWorkspaces: Bool { workspaceManager.showsWorkspaces }
+    var isWorkspaceRowVisible: Bool { workspaceManager.isRowVisible }
+    var pillsFollowWorkspace: Bool { workspaceManager.pillsFollowWorkspace }
+
+    func setPillsFollowWorkspace(_ isEnabled: Bool) {
+        workspaceManager.setPillsFollowWorkspace(isEnabled)
+    }
+
+    func setShowsWorkspaces(_ isEnabled: Bool) {
+        workspaceManager.setShowsWorkspaces(isEnabled)
+    }
+
+    /// Fresh AeroSpace state, read synchronously (for menus).
+    func currentAeroSpaceState() -> AeroSpaceState {
+        workspaceManager.fetchStateNow()
+    }
+
+    /// Frames of on-screen normal windows, keyed by window number.
+    private static func onScreenWindowFrames() -> [CGWindowID: CGRect] {
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return [:]
+        }
+        var frames: [CGWindowID: CGRect] = [:]
+        for info in windowList {
+            guard let number = info[kCGWindowNumber as String] as? NSNumber,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds) else {
+                continue
+            }
+            frames[CGWindowID(number.uint32Value)] = frame
+        }
+        return frames
+    }
+
+    func moveWindow(_ windowID: CGWindowID, toWorkspace workspace: String) {
+        workspaceManager.moveWindow(windowID, toWorkspace: workspace)
+    }
+
+    func focusAeroSpaceWindow(_ windowID: CGWindowID) {
+        workspaceManager.focusWindow(windowID)
+    }
+
+    func switchToWorkspace(_ workspace: String) {
+        workspaceManager.switchToWorkspace(workspace)
+    }
+
+    private func attachWorkspaces(
+        to states: [DisplayState],
+        badgeCountByProcessID: [pid_t: Int]
+    ) -> [DisplayState] {
+        let showsRow = workspaceManager.isRowVisible
+        let followsWorkspace = workspaceManager.isPillsFollowingWorkspace
+        guard showsRow || followsWorkspace else {
+            return states
+        }
+        let aeroSpaceState = workspaceManager.state
+        let frameByWindowID = followsWorkspace ? Self.onScreenWindowFrames() : [:]
+        let screens = NSScreen.screens
+        return states.map { state in
+            var state = state
+            guard let index = screens.firstIndex(where: { $0.displayID == state.id }) else {
+                return state
+            }
+            let screenNumber = index + 1
+
+            if followsWorkspace {
+                state.apps = WorkspaceGroupBuilder.visibleWorkspaceWindows(
+                    in: aeroSpaceState,
+                    screenNumber: screenNumber,
+                    frameByWindowID: frameByWindowID
+                ).compactMap { window in
+                    guard let processID = window.processID else {
+                        return nil
+                    }
+                    return RunningAppItem(
+                        processID: processID,
+                        name: window.title.isEmpty ? window.appName : window.title,
+                        isFrontmost: window.id == aeroSpaceState.focusedWindowID,
+                        notificationBadgeCount: max(0, badgeCountByProcessID[processID] ?? 0),
+                        windowID: window.id
+                    )
+                }
+            }
+
+            guard showsRow else {
+                return state
+            }
+            state.workspaceGroups = WorkspaceGroupBuilder.groups(from: aeroSpaceState, screenNumber: screenNumber)
+            state.emptyWorkspaceTarget = WorkspaceGroupBuilder.emptyWorkspaceTarget(
+                in: aeroSpaceState,
+                screenNumber: screenNumber
+            )
+            return state
+        }
     }
 
     func windowPreviews(
@@ -412,6 +516,8 @@ final class BarManager: ObservableObject {
                 queue: .main
             ) { [weak self] _ in
                 self?.scheduleDisplayRefresh()
+                // Workspace switches almost always activate another app.
+                self?.workspaceManager.refresh()
             },
             workspaceNotificationCenter.addObserver(
                 forName: NSWorkspace.didLaunchApplicationNotification,
@@ -508,9 +614,12 @@ final class BarManager: ObservableObject {
 
     private func refreshDisplayStates() {
         let badgeCountByProcessID = dockNotificationBadgeProvider.fetchBadgeCountByProcessID()
-        displayStates = attachPins(to: displayStateBuilder.buildDisplayStates(
-            notificationBadgeCountByProcessID: badgeCountByProcessID
-        ))
+        displayStates = attachWorkspaces(
+            to: attachPins(to: displayStateBuilder.buildDisplayStates(
+                notificationBadgeCountByProcessID: badgeCountByProcessID
+            )),
+            badgeCountByProcessID: badgeCountByProcessID
+        )
     }
 
     private func refreshLaunchableApplications() {

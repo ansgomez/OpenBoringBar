@@ -42,6 +42,34 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
   above the bar" resize also leaves windows alone when less than half of them
   is on screen.
 
+### AeroSpace Workspaces
+
+If [AeroSpace](https://github.com/nikitabobko/AeroSpace) is installed, the bar
+gets a second row above the pills, 30 pt high (the bar becomes 75 pt). It shows
+one group per workspace on that display that has windows, plus the visible
+one, with an icon per window. The focused workspace's name is in the accent
+color.
+
+- **Click a workspace name** to go to it.
+- **Click an icon** to focus that window.
+- **Drag an icon** onto another group to move the window there, or onto the
+  dashed **+** to move it to the first empty workspace (1–9 first; `0` is never
+  used). Moves are manual, so they may exceed any window limit you enforce in
+  AeroSpace.
+- **Show Workspaces** in the bar menu turns the row off (the bar goes back to
+  44 pt).
+- **Pills Follow Workspace** (bar menu, on by default): the pill row shows one
+  pill per window of the workspace on screen, titled with the window title;
+  tiled windows left to right, then floating ones. The focused window's pill
+  is highlighted, and clicking a pill focuses that window. Drag a pill onto a
+  workspace group (or **+**) to move that window there. Use the workspace
+  row to reach other workspaces. Turned off, pills are one per app as below.
+
+AeroSpace does not report changes, so the bar re-reads it when an app is
+activated, when windows open, close or move, after each click or drop, and
+every 2 seconds. Set AeroSpace's `gaps.outer.bottom` to at least the bar height
+(e.g. 84 with the row, 52 without), or tiled windows will reach under the bar.
+
 ### Pinned Apps
 
 Pinned apps are icons at the left of the bar that stay after the app quits.

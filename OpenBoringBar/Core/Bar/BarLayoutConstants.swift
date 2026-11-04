@@ -3,6 +3,11 @@ import Foundation
 
 enum BarLayoutConstants {
     static let panelHeight: CGFloat = 44
+    /// Extra height of the AeroSpace workspace row above the main row.
+    static let workspaceRowHeight: CGFloat = 30
+    static let workspaceGroupHeight: CGFloat = 22
+    static let workspaceGroupSpacing: CGFloat = 6
+    static let workspaceIconSize: CGFloat = 16
     static let panelCollapseAnimationDuration: TimeInterval = 0.2
     static let autoCollapsePointerPollInterval: TimeInterval = 0.08
     static let autoCollapseBottomRevealHotZoneHeight: CGFloat = 10

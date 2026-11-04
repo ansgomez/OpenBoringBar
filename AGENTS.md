@@ -186,6 +186,28 @@ OpenBoringBarTests/
    `AppEvent` cases.
 3. Pins are never deleted automatically; unresolved pins are kept and hidden.
 
+### AeroSpace Integration
+
+1. `AeroSpaceClient` (`Core/Infrastructure/Application`) is the only code that
+   runs the `aerospace` CLI; `AeroSpaceOutputParser` turns its output into
+   `AeroSpaceState` (`Core/Domain/Models`).
+2. `AeroSpaceWorkspaceManager` (`Core/Bar`) owns the current state, re-reads
+   it off the main thread (coalesced; on app activation, AX window changes,
+   after commands, and every 2 s), and saves the Show Workspaces setting under
+   `OpenBoringBar.showWorkspaces`.
+3. `BarManager` attaches `WorkspaceGroupBuilder` output to each
+   `DisplayState`; `WorkspaceRowView` draws it. The panel height grows by
+   `BarLayoutConstants.workspaceRowHeight` while the row is visible, and the
+   bottom guard gets the new height through `barDisplayHeightChanged`.
+4. Pills Follow Workspace (`OpenBoringBar.pillsFollowWorkspace`, default on):
+   `BarManager` replaces `DisplayState.apps` with one `RunningAppItem` per
+   window of the visible workspace (`windowID` set), ordered by
+   `WorkspaceGroupBuilder.visibleWorkspaceWindows`; pill clicks with a
+   `windowID` focus that window through AeroSpace.
+5. Off-screen windows: `OffScreenWindowRule` hides pills for apps whose
+   windows are all parked by AeroSpace; window cycling and the pill window
+   menu deliberately ignore that rule.
+
 ## Layer Responsibilities
 
 1. `App/`
