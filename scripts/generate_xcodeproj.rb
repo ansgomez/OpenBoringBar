@@ -30,6 +30,7 @@ module OpenBoringBarProjectGenerator
         'OpenBoringBar/Core/Domain/Models/PinMove.swift',
         'OpenBoringBar/Core/Domain/Models/PinnedAppsSnapshot.swift',
         'OpenBoringBar/Core/Domain/Models/RunningAppDescriptor.swift',
+        'OpenBoringBar/Core/Bar/BottomGuardFramePolicy.swift',
         'OpenBoringBar/Core/Bar/PinnedAppMatcher.swift',
         'OpenBoringBar/Core/Bar/PinnedAppManager.swift',
         'OpenBoringBar/Core/Infrastructure/Application/ApplicationLocationProvider.swift',

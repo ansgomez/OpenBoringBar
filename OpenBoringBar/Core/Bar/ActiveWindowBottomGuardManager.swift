@@ -461,17 +461,17 @@ final class ActiveWindowBottomGuardManager {
         let currentSnapshot = ActiveProcessSnapshot(processID: processID, windowFrame: windowFrame)
         log("[\(source)] check: pid=\(processID), displayID=\(screenMatch.displayID), windowMaxY=\(windowFrame.maxY), requiredMaxY=\(requiredBottomY), panelHeight=\(panelHeight), screenMaxY=\(screenMatch.displayBounds.maxY)")
 
-        guard windowFrame.maxY > requiredBottomY else {
-            log("[\(source)] no-op: window already above panel for pid=\(processID)")
+        guard let adjustedFrame = BottomGuardFramePolicy.adjustedFrame(
+            for: windowFrame,
+            displayBounds: screenMatch.displayBounds,
+            panelHeight: panelHeight
+        ) else {
+            log("[\(source)] no-op: window above panel, parked off-screen, or under panel for pid=\(processID)")
             if currentSnapshot != lastSnapshot {
                 lastSnapshot = currentSnapshot
             }
             return false
         }
-
-        let targetHeight = max(1, requiredBottomY - windowFrame.origin.y)
-        var adjustedFrame = windowFrame
-        adjustedFrame.size.height = targetHeight
 
         log("[\(source)] resize: pid=\(processID), topY=\(windowFrame.origin.y), bottomFrom=\(windowFrame.maxY), bottomTo=\(adjustedFrame.maxY), heightFrom=\(windowFrame.height), heightTo=\(adjustedFrame.height)")
         switch resizeKeepingTop(
@@ -551,18 +551,14 @@ final class ActiveWindowBottomGuardManager {
             }
             self.pendingResizeRequest = nil
 
-            let success = self.performResizeKeepingTop(request.frame, for: request.window)
-            self.lastResizeExecutionUptime = ProcessInfo.processInfo.systemUptime
-
-            if success {
-                self.log("[\(request.source):trailing] resize success: pid=\(request.processID)")
-                self.lastSnapshot = ActiveProcessSnapshot(
-                    processID: request.processID,
-                    windowFrame: request.frame
-                )
-            } else {
-                self.log("[\(request.source):trailing] resize failed: pid=\(request.processID)")
-            }
+            // Re-read the window instead of applying the queued frame: the window may
+            // have moved since (e.g. a tiling window manager re-laid it out), and
+            // writing the stale position back makes it jump.
+            _ = self.adjustWindowIfNeeded(
+                request.window,
+                processID: request.processID,
+                source: "\(request.source):trailing"
+            )
         }
 
         pendingResizeWorkItem = workItem
