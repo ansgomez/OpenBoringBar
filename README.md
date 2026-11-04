@@ -26,9 +26,21 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
   each click brings forward its next window on that display. Clicks never
   minimize.
 - **Right-click a pill** to switch to one of the app's windows on that
-  display, pin or unpin the app, or quit it.
-- **Right-click empty bar space** for Quit OpenBoringBar, Auto-collapse, and
-  Show Pins On.
+  display, pin or unpin the app, or quit it. If
+  [AeroSpace](https://github.com/nikitabobko/AeroSpace) is installed (found at
+  `/opt/homebrew/bin/aerospace` or `/usr/local/bin/aerospace`), each window
+  shows its workspace name; windows on the current workspace come first, with
+  the name highlighted.
+- **Right-click empty bar space** for Quit OpenBoringBar, Auto-collapse,
+  Hide Off-Screen Windows, and Show Pins On.
+- **Hide Off-Screen Windows** (on by default) ignores windows that are less
+  than 10% visible. Tiling window managers such as AeroSpace hide other
+  workspaces' windows by moving them almost off-screen; with this on, apps
+  whose windows are all on other workspaces get no pill. Clicking a pill still
+  cycles through all of that app's windows, including ones on other
+  workspaces, and the pill's right-click menu lists them all. The "keep windows
+  above the bar" resize also leaves windows alone when less than half of them
+  is on screen.
 
 ### Pinned Apps
 

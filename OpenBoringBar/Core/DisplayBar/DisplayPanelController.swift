@@ -236,6 +236,7 @@ final class DisplayPanelController {
                 pinDisplayMode: barManager.pinDisplayMode,
                 launchableApplications: launchableApplications,
                 isAutoCollapseEnabled: isAutoCollapseEnabled,
+                hidesOffScreenWindows: barManager.hidesOffScreenWindows,
                 onOpenPinnedApp: { [barManager] item in
                     barManager.openPinnedApp(item)
                 },
@@ -275,6 +276,9 @@ final class DisplayPanelController {
                 },
                 onAutoCollapseToggled: { [weak self] isEnabled in
                     self?.handleAutoCollapseToggled(isEnabled: isEnabled)
+                },
+                onHidesOffScreenWindowsToggled: { [barManager] isEnabled in
+                    barManager.setHidesOffScreenWindows(isEnabled)
                 },
                 onRequestQuit: handleQuitRequested
             )
@@ -626,6 +630,56 @@ final class DisplayPanelController {
         )
     }
 
+    /// Current workspace first, then other workspaces by name; window order
+    /// is kept within a workspace. Windows with no known workspace go last.
+    private static func sortedByWorkspace(
+        _ windows: [(windowID: CGWindowID, title: String)],
+        workspaces: WindowWorkspaceSnapshot
+    ) -> [(windowID: CGWindowID, title: String)] {
+        guard !workspaces.workspaceByWindowID.isEmpty else {
+            return windows
+        }
+
+        func rank(_ windowID: CGWindowID) -> (Int, String) {
+            guard let workspace = workspaces.workspaceByWindowID[windowID] else {
+                return (2, "")
+            }
+            return (workspace == workspaces.focusedWorkspace ? 0 : 1, workspace)
+        }
+
+        return windows.enumerated().sorted { lhs, rhs in
+            let left = rank(lhs.element.windowID)
+            let right = rank(rhs.element.windowID)
+            if left.0 != right.0 { return left.0 < right.0 }
+            if left.1 != right.1 {
+                return left.1.localizedStandardCompare(right.1) == .orderedAscending
+            }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+    }
+
+    /// "W  Window title", with the workspace name dimmed unless it is the
+    /// workspace on screen.
+    private static func windowMenuTitle(
+        _ title: String,
+        workspace: String,
+        isCurrent: Bool
+    ) -> NSAttributedString {
+        let font = NSFont.menuFont(ofSize: 0)
+        let result = NSMutableAttributedString(
+            string: workspace,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .semibold),
+                .foregroundColor: isCurrent ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
+            ]
+        )
+        result.append(NSAttributedString(
+            string: "   \(title)",
+            attributes: [.font: font, .foregroundColor: NSColor.labelColor]
+        ))
+        return result
+    }
+
     private func showAppMenu(
         displayID: CGDirectDisplayID,
         processID: pid_t,
@@ -635,12 +689,23 @@ final class DisplayPanelController {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let windows = barManager.windowTitles(for: processID, on: displayID)
+        let workspaces = barManager.windowWorkspaces()
+        let windows = Self.sortedByWorkspace(
+            barManager.windowTitles(for: processID, on: displayID),
+            workspaces: workspaces
+        )
         for window in windows {
             let item = ClosureMenuItem(title: window.title) { [weak self] in
                 self?.barManager.activateWindow(
                     processID: processID,
                     windowID: window.windowID
+                )
+            }
+            if let workspace = workspaces.workspaceByWindowID[window.windowID] {
+                item.attributedTitle = Self.windowMenuTitle(
+                    window.title,
+                    workspace: workspace,
+                    isCurrent: workspace == workspaces.focusedWorkspace
                 )
             }
             menu.addItem(item)

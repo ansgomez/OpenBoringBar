@@ -21,7 +21,7 @@ struct AppWindowPreviewPanelView: View {
             }
 
             if previews.isEmpty {
-                Text("暂无可预览窗口")
+                Text("No windows to preview")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

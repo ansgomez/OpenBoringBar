@@ -16,6 +16,7 @@ struct DisplayBottomBarView: View {
     let pinDisplayMode: PinDisplayMode
     let launchableApplications: [LaunchableApplicationItem]
     let isAutoCollapseEnabled: Bool
+    let hidesOffScreenWindows: Bool
     let onOpenPinnedApp: (PinnedAppItem) -> Void
     let onUnpinPinnedApp: (PinnedAppItem) -> Void
     let onMovePinnedApp: (PinnedAppItem, PinMove) -> Void
@@ -26,6 +27,7 @@ struct DisplayBottomBarView: View {
     let onAppHoverChanged: (pid_t?, CGRect?) -> Void
     let onBarHoverChanged: (Bool) -> Void
     let onAutoCollapseToggled: (Bool) -> Void
+    let onHidesOffScreenWindowsToggled: (Bool) -> Void
     let onRequestQuit: () -> Void
 
     @State private var isApplicationLauncherPresented = false
@@ -65,7 +67,7 @@ struct DisplayBottomBarView: View {
 
                 Group {
                     if apps.isEmpty {
-                        Text("该显示器暂无可见窗口")
+                        Text("No windows on this display")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,6 +140,14 @@ struct DisplayBottomBarView: View {
             isOn: Binding(
                 get: { isAutoCollapseEnabled },
                 set: onAutoCollapseToggled
+            )
+        )
+
+        Toggle(
+            "Hide Off-Screen Windows",
+            isOn: Binding(
+                get: { hidesOffScreenWindows },
+                set: onHidesOffScreenWindowsToggled
             )
         )
 

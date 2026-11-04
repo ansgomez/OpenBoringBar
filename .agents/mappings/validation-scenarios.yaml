@@ -48,3 +48,11 @@ validation_scenarios:
       - unpin_from_pin_menu
       - switch_show_pins_on_modes_on_two_displays
       - relaunch_bar_and_confirm_pins_persist
+
+  - id: off_screen_windows
+    title: Windows parked off-screen by a window manager
+    required: false
+    steps:
+      - with_aerospace_put_app_on_inactive_workspace
+      - verify_no_pill_and_window_not_resized
+      - toggle_hide_off_screen_windows_off_and_verify_pill_returns

@@ -4,6 +4,9 @@ import ApplicationServices
 final class BarDisplayStateBuilder {
     private let appOrderManager: BarDisplayAppOrderManager
 
+    /// Skip windows parked off-screen (see `OffScreenWindowRule`).
+    var hidesOffScreenWindows = true
+
     init(appOrderManager: BarDisplayAppOrderManager = BarDisplayAppOrderManager()) {
         self.appOrderManager = appOrderManager
     }
@@ -120,6 +123,11 @@ final class BarDisplayStateBuilder {
                   !windowBounds.isEmpty,
                   let runningApplication = NSRunningApplication(processIdentifier: processID),
                   runningApplication.activationPolicy == .regular else {
+                continue
+            }
+
+            if hidesOffScreenWindows,
+               OffScreenWindowRule.isParkedOffScreen(windowBounds, displays: Array(displayBoundsByID.values)) {
                 continue
             }
 

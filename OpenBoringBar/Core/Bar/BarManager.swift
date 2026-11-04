@@ -9,6 +9,7 @@ final class BarManager: ObservableObject {
     private let eventBus: AppEventBus
     private let installedApplicationProvider: InstalledApplicationProviding
     private let windowPreviewProvider: WindowPreviewProviding
+    private let windowWorkspaceProvider: WindowWorkspaceProviding
     private let dockNotificationBadgeProvider: DockNotificationBadgeProviding
     private let displayStateBuilder: BarDisplayStateBuilder
     private let accessibilityObserverManager: BarAccessibilityObserverManager
@@ -21,10 +22,17 @@ final class BarManager: ObservableObject {
 
     private let refreshDebounceInterval: TimeInterval = 0.10
 
+    private static let hidesOffScreenWindowsDefaultsKey = "OpenBoringBar.hideOffScreenWindows"
+
+    /// Whether the bar ignores windows parked off-screen by window managers
+    /// such as AeroSpace. On by default.
+    private(set) var hidesOffScreenWindows: Bool
+
     init(
         eventBus: AppEventBus,
         installedApplicationProvider: InstalledApplicationProviding = InstalledApplicationProvider(),
         windowPreviewProvider: WindowPreviewProviding = WindowPreviewProvider(),
+        windowWorkspaceProvider: WindowWorkspaceProviding = WindowWorkspaceProvider(),
         dockNotificationBadgeProvider: DockNotificationBadgeProviding = DockNotificationBadgeProvider(),
         displayStateBuilder: BarDisplayStateBuilder = BarDisplayStateBuilder(),
         accessibilityObserverManager: BarAccessibilityObserverManager = BarAccessibilityObserverManager(),
@@ -38,12 +46,17 @@ final class BarManager: ObservableObject {
         self.eventBus = eventBus
         self.installedApplicationProvider = installedApplicationProvider
         self.windowPreviewProvider = windowPreviewProvider
+        self.windowWorkspaceProvider = windowWorkspaceProvider
         self.dockNotificationBadgeProvider = dockNotificationBadgeProvider
         self.displayStateBuilder = displayStateBuilder
         self.accessibilityObserverManager = accessibilityObserverManager
         self.pinnedAppManager = pinnedAppManager
         self.workspaceNotificationCenter = NSWorkspace.shared.notificationCenter
         self.workspaceObservers = []
+        self.hidesOffScreenWindows = UserDefaults.standard.object(
+            forKey: Self.hidesOffScreenWindowsDefaultsKey
+        ) as? Bool ?? true
+        self.displayStateBuilder.hidesOffScreenWindows = hidesOffScreenWindows
 
         self.accessibilityObserverManager.onObservedChange = { [weak self] in
             self?.scheduleDisplayRefresh()
@@ -167,6 +180,16 @@ final class BarManager: ObservableObject {
 
     var pinDisplayMode: PinDisplayMode {
         pinnedAppManager.mode
+    }
+
+    func setHidesOffScreenWindows(_ isEnabled: Bool) {
+        guard hidesOffScreenWindows != isEnabled else {
+            return
+        }
+        hidesOffScreenWindows = isEnabled
+        displayStateBuilder.hidesOffScreenWindows = isEnabled
+        UserDefaults.standard.set(isEnabled, forKey: Self.hidesOffScreenWindowsDefaultsKey)
+        scheduleDisplayRefresh()
     }
 
     func setPinDisplayMode(_ mode: PinDisplayMode) {
@@ -354,6 +377,11 @@ final class BarManager: ObservableObject {
         on displayID: CGDirectDisplayID
     ) -> [(windowID: CGWindowID, title: String)] {
         windowPreviewProvider.windowTitles(for: processID, displayID: displayID)
+    }
+
+    /// AeroSpace workspace of each window, if AeroSpace is installed.
+    func windowWorkspaces() -> WindowWorkspaceSnapshot {
+        windowWorkspaceProvider.fetchSnapshot()
     }
 
     func windowPreviews(
