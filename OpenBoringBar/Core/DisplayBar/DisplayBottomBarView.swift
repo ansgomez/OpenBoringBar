@@ -11,9 +11,17 @@ private enum DisplayBottomBarAnimation {
 
 struct DisplayBottomBarView: View {
     let apps: [RunningAppItem]
+    let pinnedApps: [PinnedAppItem]
+    let pinStripMaxWidth: CGFloat
+    let pinDisplayMode: PinDisplayMode
     let launchableApplications: [LaunchableApplicationItem]
     let isAutoCollapseEnabled: Bool
+    let onOpenPinnedApp: (PinnedAppItem) -> Void
+    let onUnpinPinnedApp: (PinnedAppItem) -> Void
+    let onMovePinnedApp: (PinnedAppItem, PinMove) -> Void
+    let onPinDisplayModeChanged: (PinDisplayMode) -> Void
     let onSwitch: (pid_t) -> Void
+    let onShowAppMenu: (pid_t, NSEvent, NSView) -> Void
     let onOpenApplication: (URL) -> Void
     let onAppHoverChanged: (pid_t?, CGRect?) -> Void
     let onBarHoverChanged: (Bool) -> Void
@@ -42,6 +50,19 @@ struct DisplayBottomBarView: View {
 //                Divider()
 //                    .padding(.vertical, 9)
 
+                if !pinnedApps.isEmpty {
+                    DisplayBarPinnedStrip(
+                        pinnedApps: pinnedApps,
+                        maxWidth: pinStripMaxWidth,
+                        onOpen: onOpenPinnedApp,
+                        onUnpin: onUnpinPinnedApp,
+                        onMove: onMovePinnedApp
+                    )
+
+                    Divider()
+                        .padding(.vertical, 9)
+                }
+
                 Group {
                     if apps.isEmpty {
                         Text("该显示器暂无可见窗口")
@@ -63,6 +84,11 @@ struct DisplayBottomBarView: View {
                                         app: app,
                                         onSwitch: onSwitch,
                                         onHoverChanged: onAppHoverChanged
+                                    )
+                                    .overlay(
+                                        DisplayBarPillRightClickCatcher { event, view in
+                                            onShowAppMenu(app.processID, event, view)
+                                        }
                                     )
                                     .transition(
                                         .asymmetric(
@@ -97,17 +123,34 @@ struct DisplayBottomBarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onHover(perform: onBarHoverChanged)
         .contextMenu {
-            Button(action: onRequestQuit) {
-                Label("Quit", systemImage: "xmark.circle")
-            }
+            barMenuItems
+        }
+    }
 
-            Toggle(
-                "Auto-collapse",
-                isOn: Binding(
-                    get: { isAutoCollapseEnabled },
-                    set: onAutoCollapseToggled
-                )
+    @ViewBuilder
+    private var barMenuItems: some View {
+        Button(action: onRequestQuit) {
+            Label("Quit OpenBoringBar", systemImage: "power")
+        }
+
+        Toggle(
+            "Auto-collapse",
+            isOn: Binding(
+                get: { isAutoCollapseEnabled },
+                set: onAutoCollapseToggled
             )
+        )
+
+        Picker(
+            "Show Pins On",
+            selection: Binding(
+                get: { pinDisplayMode },
+                set: onPinDisplayModeChanged
+            )
+        ) {
+            ForEach(PinDisplayMode.allCases, id: \.self) { mode in
+                Text(mode.menuTitle).tag(mode)
+            }
         }
     }
 
@@ -154,6 +197,120 @@ struct DisplayBottomBarView: View {
             }
             .padding(8)
         }
+    }
+}
+
+/// Pinned app icons at the left of the bar. As wide as its icons, up to
+/// `maxWidth`; scrolls sideways past that.
+private struct DisplayBarPinnedStrip: View {
+    let pinnedApps: [PinnedAppItem]
+    let maxWidth: CGFloat
+    let onOpen: (PinnedAppItem) -> Void
+    let onUnpin: (PinnedAppItem) -> Void
+    let onMove: (PinnedAppItem, PinMove) -> Void
+
+    private var contentWidth: CGFloat {
+        let count = CGFloat(pinnedApps.count)
+        return count * BarLayoutConstants.pinHitAreaSize
+            + max(0, count - 1) * BarLayoutConstants.pinSpacing
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BarLayoutConstants.pinSpacing) {
+                ForEach(Array(pinnedApps.enumerated()), id: \.element.id) { index, item in
+                    DisplayBarPinnedIcon(
+                        item: item,
+                        isFirst: index == 0,
+                        isLast: index == pinnedApps.count - 1,
+                        onOpen: onOpen,
+                        onUnpin: onUnpin,
+                        onMove: onMove
+                    )
+                }
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: min(contentWidth, maxWidth))
+    }
+}
+
+private struct DisplayBarPinnedIcon: View {
+    let item: PinnedAppItem
+    let isFirst: Bool
+    let isLast: Bool
+    let onOpen: (PinnedAppItem) -> Void
+    let onUnpin: (PinnedAppItem) -> Void
+    let onMove: (PinnedAppItem, PinMove) -> Void
+
+    @State private var isHovering = false
+
+    private func isMoveAvailable(_ move: PinMove) -> Bool {
+        switch move {
+        case .left, .toStart:
+            return !isFirst
+        case .right, .toEnd:
+            return !isLast
+        }
+    }
+
+    var body: some View {
+        Button(action: { onOpen(item) }) {
+            VStack(spacing: 1) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: item.resolvedURL.path))
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(
+                        width: BarLayoutConstants.pinIconSize,
+                        height: BarLayoutConstants.pinIconSize
+                    )
+
+                Circle()
+                    .fill(Color.primary.opacity(item.isRunning ? 0.7 : 0))
+                    .frame(
+                        width: BarLayoutConstants.pinRunningDotSize,
+                        height: BarLayoutConstants.pinRunningDotSize
+                    )
+            }
+            .frame(
+                width: BarLayoutConstants.pinHitAreaSize,
+                height: BarLayoutConstants.pinHitAreaSize
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(isHovering ? 0.18 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(item.name)
+        .onHover { hovering in
+            withAnimation(DisplayBottomBarAnimation.pillHover) {
+                isHovering = hovering
+            }
+        }
+        .contextMenu {
+            if !(isFirst && isLast) {
+                ForEach(PinMove.allCases, id: \.self) { move in
+                    Button {
+                        onMove(item, move)
+                    } label: {
+                        Label(move.menuTitle, systemImage: move.systemImageName)
+                    }
+                    .disabled(!isMoveAvailable(move))
+                }
+
+                Divider()
+            }
+
+            Button {
+                onUnpin(item)
+            } label: {
+                Label("Unpin \(item.name)", systemImage: "pin.slash")
+            }
+        }
+        .animation(DisplayBottomBarAnimation.appStateChange, value: item.isRunning)
     }
 }
 
@@ -299,6 +456,42 @@ private struct DisplayBarAppIcon: View {
             }
         }
         .frame(width: 18, height: 18)
+    }
+}
+
+/// Takes right-clicks on a pill (so the app menu opens instead of the bar
+/// menu) and lets every other event fall through to the SwiftUI button.
+private struct DisplayBarPillRightClickCatcher: NSViewRepresentable {
+    let onRightClick: (NSEvent, NSView) -> Void
+
+    func makeNSView(context: Context) -> DisplayBarPillRightClickNSView {
+        let view = DisplayBarPillRightClickNSView()
+        view.onRightClick = onRightClick
+        return view
+    }
+
+    func updateNSView(_ nsView: DisplayBarPillRightClickNSView, context: Context) {
+        nsView.onRightClick = onRightClick
+    }
+}
+
+private final class DisplayBarPillRightClickNSView: NSView {
+    var onRightClick: ((NSEvent, NSView) -> Void)?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let eventType = NSApp.currentEvent?.type,
+              eventType == .rightMouseDown || eventType == .rightMouseUp else {
+            return nil
+        }
+        return super.hitTest(point)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onRightClick?(event, self)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        nil
     }
 }
 

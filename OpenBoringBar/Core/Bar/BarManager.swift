@@ -12,6 +12,7 @@ final class BarManager: ObservableObject {
     private let dockNotificationBadgeProvider: DockNotificationBadgeProviding
     private let displayStateBuilder: BarDisplayStateBuilder
     private let accessibilityObserverManager: BarAccessibilityObserverManager
+    private let pinnedAppManager: PinnedAppManager
     private let workspaceNotificationCenter: NotificationCenter
 
     private var displayObserver: NSObjectProtocol?
@@ -26,7 +27,11 @@ final class BarManager: ObservableObject {
         windowPreviewProvider: WindowPreviewProviding = WindowPreviewProvider(),
         dockNotificationBadgeProvider: DockNotificationBadgeProviding = DockNotificationBadgeProvider(),
         displayStateBuilder: BarDisplayStateBuilder = BarDisplayStateBuilder(),
-        accessibilityObserverManager: BarAccessibilityObserverManager = BarAccessibilityObserverManager()
+        accessibilityObserverManager: BarAccessibilityObserverManager = BarAccessibilityObserverManager(),
+        pinnedAppManager: PinnedAppManager = PinnedAppManager(
+            storage: PinnedAppStorageProvider(),
+            locator: ApplicationLocationProvider()
+        )
     ) {
         self.displayStates = []
         self.launchableApplications = []
@@ -36,6 +41,7 @@ final class BarManager: ObservableObject {
         self.dockNotificationBadgeProvider = dockNotificationBadgeProvider
         self.displayStateBuilder = displayStateBuilder
         self.accessibilityObserverManager = accessibilityObserverManager
+        self.pinnedAppManager = pinnedAppManager
         self.workspaceNotificationCenter = NSWorkspace.shared.notificationCenter
         self.workspaceObservers = []
 
@@ -75,14 +81,6 @@ final class BarManager: ObservableObject {
         }
 
         let previousFrontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == processID,
-           minimizeFocusedWindow(of: processID) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                self?.refreshDisplayStates()
-            }
-            return
-        }
 
         _ = app.unhide()
         _ = restoreFirstMinimizedWindowIfNoVisibleWindow(of: processID)
@@ -130,6 +128,198 @@ final class BarManager: ObservableObject {
         }
     }
 
+    /// Pill click. Brings the app forward; if it is already in front, steps
+    /// through its windows on `displayID`. Never minimizes.
+    func switchToApp(processID: pid_t, displayID: CGDirectDisplayID) {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else {
+            activate(processID: processID)
+            return
+        }
+
+        let windowsOnDisplay = windowPreviewProvider.orderedWindowIDs(
+            for: processID,
+            displayID: displayID
+        )
+        guard let frontWindowOnDisplay = windowsOnDisplay.first else {
+            // No visible window here (e.g. all minimized): restore path.
+            activate(processID: processID)
+            return
+        }
+
+        let frontWindowOverall = windowPreviewProvider.orderedWindowIDs(
+            for: processID,
+            displayID: nil
+        ).first
+        if frontWindowOverall != frontWindowOnDisplay {
+            // App is in front, but its active window is on another display.
+            activateWindow(processID: processID, windowID: frontWindowOnDisplay)
+            return
+        }
+
+        // Raising the rearmost window each click visits every window in a loop.
+        guard windowsOnDisplay.count > 1, let rearmostWindow = windowsOnDisplay.last else {
+            return
+        }
+        activateWindow(processID: processID, windowID: rearmostWindow)
+    }
+
+    // MARK: Pinned apps
+
+    var pinDisplayMode: PinDisplayMode {
+        pinnedAppManager.mode
+    }
+
+    func setPinDisplayMode(_ mode: PinDisplayMode) {
+        pinnedAppManager.setMode(mode)
+        scheduleDisplayRefresh()
+    }
+
+    /// Pin click: always goes through `openApplication`, which launches the
+    /// app, or brings it forward and opens a window if it has none (like the
+    /// Dock). Never minimizes.
+    func openPinnedApp(_ item: PinnedAppItem) {
+        guard let url = pinnedAppManager.resolvedURL(for: item.pin) else {
+            NSLog("OpenBoringBar: pinned app not found: \(item.pin.bundleIdentifier ?? item.pin.bundleURL.path)")
+            NSSound.beep()
+            scheduleDisplayRefresh()
+            return
+        }
+        openApplication(bundleURL: url)
+    }
+
+    /// `nil` when the app cannot be pinned (no bundle) or this bar cannot
+    /// edit pins; otherwise whether it is pinned on this bar.
+    func pinState(
+        ofRunningApp processID: pid_t,
+        displayID: CGDirectDisplayID
+    ) -> Bool? {
+        let context = pinContext(for: displayID)
+        guard pinnedAppManager.canEditPins(isMainDisplay: context.isMainDisplay),
+              let app = pinnedApp(forProcessID: processID) else {
+            return nil
+        }
+        return pinnedAppManager.isPinned(
+            app,
+            displayUUID: context.displayUUID,
+            isMainDisplay: context.isMainDisplay
+        )
+    }
+
+    func pinRunningApp(processID: pid_t, displayID: CGDirectDisplayID) {
+        guard let app = pinnedApp(forProcessID: processID) else {
+            return
+        }
+        let context = pinContext(for: displayID)
+        pinnedAppManager.pin(app, displayUUID: context.displayUUID, isMainDisplay: context.isMainDisplay)
+        scheduleDisplayRefresh()
+    }
+
+    func unpinRunningApp(processID: pid_t, displayID: CGDirectDisplayID) {
+        guard let app = pinnedApp(forProcessID: processID) else {
+            return
+        }
+        unpin(app, displayID: displayID)
+    }
+
+    func unpin(_ pin: PinnedApp, displayID: CGDirectDisplayID) {
+        let context = pinContext(for: displayID)
+        pinnedAppManager.unpin(pin, displayUUID: context.displayUUID, isMainDisplay: context.isMainDisplay)
+        scheduleDisplayRefresh()
+    }
+
+    /// Reorders a pin among the icons drawn on this bar.
+    func movePin(_ item: PinnedAppItem, _ move: PinMove, displayID: CGDirectDisplayID) {
+        guard let visiblePins = displayStates.first(where: { $0.id == displayID })?.pinnedApps.map(\.pin),
+              let index = visiblePins.firstIndex(of: item.pin) else {
+            return
+        }
+
+        let anchor: PinnedApp?
+        switch move {
+        case .left:
+            guard index > 0 else { return }
+            anchor = visiblePins[index - 1]
+        case .right:
+            guard index < visiblePins.count - 1 else { return }
+            anchor = index + 2 < visiblePins.count ? visiblePins[index + 2] : nil
+        case .toStart:
+            guard index > 0 else { return }
+            anchor = visiblePins[0]
+        case .toEnd:
+            guard index < visiblePins.count - 1 else { return }
+            anchor = nil
+        }
+
+        let context = pinContext(for: displayID)
+        pinnedAppManager.move(
+            item.pin,
+            before: anchor,
+            displayUUID: context.displayUUID,
+            isMainDisplay: context.isMainDisplay
+        )
+        scheduleDisplayRefresh()
+    }
+
+    private func pinnedApp(forProcessID processID: pid_t) -> PinnedApp? {
+        guard let app = NSRunningApplication(processIdentifier: processID),
+              let bundleURL = app.bundleURL,
+              bundleURL.pathExtension == "app" else {
+            return nil
+        }
+        return PinnedApp(bundleIdentifier: app.bundleIdentifier, bundleURL: bundleURL)
+    }
+
+    private func pinContext(for displayID: CGDirectDisplayID) -> (displayUUID: String?, isMainDisplay: Bool) {
+        (
+            NSScreen.displayUUIDString(for: displayID),
+            NSScreen.screens.first?.displayID == displayID
+        )
+    }
+
+    private func attachPins(to states: [DisplayState]) -> [DisplayState] {
+        let runningApps = NSWorkspace.shared.runningApplications.map {
+            RunningAppDescriptor(bundleIdentifier: $0.bundleIdentifier, bundleURL: $0.bundleURL)
+        }
+
+        return states.map { state in
+            var state = state
+            let context = pinContext(for: state.id)
+            state.displayUUID = context.displayUUID
+            state.isMainDisplay = context.isMainDisplay
+            state.canEditPins = pinnedAppManager.canEditPins(isMainDisplay: context.isMainDisplay)
+            state.pinnedApps = pinnedAppManager
+                .pins(forDisplayUUID: context.displayUUID, isMainDisplay: context.isMainDisplay)
+                .compactMap { pin in
+                    // Pins that cannot be found are kept but not drawn.
+                    guard let url = pinnedAppManager.resolvedURL(for: pin) else {
+                        return nil
+                    }
+                    return PinnedAppItem(
+                        pin: pin,
+                        resolvedURL: url,
+                        name: Self.displayName(ofApplicationAt: url),
+                        isRunning: PinnedAppMatcher.isRunning(pin, resolvedURL: url, among: runningApps)
+                    )
+                }
+            return state
+        }
+    }
+
+    private static func displayName(ofApplicationAt url: URL) -> String {
+        let name = FileManager.default.displayName(atPath: url.path)
+        return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
+    }
+
+    func quitApplication(processID: pid_t) {
+        guard processID != ProcessInfo.processInfo.processIdentifier,
+              let application = NSRunningApplication(processIdentifier: processID) else {
+            return
+        }
+
+        // Polite quit, same as the Dock's "Quit": the app may ask to save documents.
+        application.terminate()
+    }
+
     func activateWindow(
         processID: pid_t,
         windowID: CGWindowID
@@ -157,6 +347,13 @@ final class BarManager: ObservableObject {
             }
             self.refreshDisplayStates()
         }
+    }
+
+    func windowTitles(
+        for processID: pid_t,
+        on displayID: CGDirectDisplayID
+    ) -> [(windowID: CGWindowID, title: String)] {
+        windowPreviewProvider.windowTitles(for: processID, displayID: displayID)
     }
 
     func windowPreviews(
@@ -267,24 +464,6 @@ final class BarManager: ObservableObject {
         notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
     }
 
-    private func minimizeFocusedWindow(of processID: pid_t) -> Bool {
-        guard AXIsProcessTrusted() else {
-            return false
-        }
-
-        let appElement = AXUIElementCreateApplication(processID)
-        guard let focusedWindow = AXElementInspector.focusedWindow(from: appElement) else {
-            return false
-        }
-
-        let minimizeResult = AXUIElementSetAttributeValue(
-            focusedWindow,
-            AXAttributeName.minimized,
-            kCFBooleanTrue
-        )
-        return minimizeResult == .success
-    }
-
     private func reopen(_ app: NSRunningApplication) {
         guard let bundleURL = app.bundleURL else {
             return
@@ -301,9 +480,9 @@ final class BarManager: ObservableObject {
 
     private func refreshDisplayStates() {
         let badgeCountByProcessID = dockNotificationBadgeProvider.fetchBadgeCountByProcessID()
-        displayStates = displayStateBuilder.buildDisplayStates(
+        displayStates = attachPins(to: displayStateBuilder.buildDisplayStates(
             notificationBadgeCountByProcessID: badgeCountByProcessID
-        )
+        ))
     }
 
     private func refreshLaunchableApplications() {

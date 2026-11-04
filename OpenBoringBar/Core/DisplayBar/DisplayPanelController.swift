@@ -4,6 +4,8 @@ import SwiftUI
 
 final class DisplayPanelController {
     private static let autoCollapseDefaultsKey = "OpenBoringBar.autoCollapseEnabled"
+    /// Hover previews are off; the pill's right-click menu lists windows instead.
+    private static let isHoverPreviewEnabled = false
 
     private let barManager: BarManager
     private let eventBus: AppEventBus
@@ -121,6 +123,8 @@ final class DisplayPanelController {
                 of: panel,
                 displayID: state.id,
                 with: state.apps,
+                pinnedApps: state.pinnedApps,
+                barWidth: state.frame.width,
                 launchableApplications: launchableApplications
             )
             updatePanelPresentation(
@@ -220,14 +224,41 @@ final class DisplayPanelController {
         of panel: DisplayPanelWindow,
         displayID: CGDirectDisplayID,
         with apps: [RunningAppItem],
+        pinnedApps: [PinnedAppItem],
+        barWidth: CGFloat,
         launchableApplications: [LaunchableApplicationItem]
     ) {
         let content = AnyView(
             DisplayBottomBarView(
                 apps: apps,
+                pinnedApps: pinnedApps,
+                pinStripMaxWidth: barWidth * BarLayoutConstants.pinStripMaxWidthFraction,
+                pinDisplayMode: barManager.pinDisplayMode,
                 launchableApplications: launchableApplications,
                 isAutoCollapseEnabled: isAutoCollapseEnabled,
-                onSwitch: barManager.activate(processID:),
+                onOpenPinnedApp: { [barManager] item in
+                    barManager.openPinnedApp(item)
+                },
+                onUnpinPinnedApp: { [barManager] item in
+                    barManager.unpin(item.pin, displayID: displayID)
+                },
+                onMovePinnedApp: { [barManager] item, move in
+                    barManager.movePin(item, move, displayID: displayID)
+                },
+                onPinDisplayModeChanged: { [barManager] mode in
+                    barManager.setPinDisplayMode(mode)
+                },
+                onSwitch: { [barManager] processID in
+                    barManager.switchToApp(processID: processID, displayID: displayID)
+                },
+                onShowAppMenu: { [weak self] processID, event, view in
+                    self?.showAppMenu(
+                        displayID: displayID,
+                        processID: processID,
+                        event: event,
+                        view: view
+                    )
+                },
                 onOpenApplication: barManager.openApplication(bundleURL:),
                 onAppHoverChanged: { [weak self] processID, frameInScreen in
                     self?.handleAppHoverChanged(
@@ -532,7 +563,7 @@ final class DisplayPanelController {
     ) {
         let context = previewContext(for: displayID)
 
-        guard let processID, let pillFrameInScreen else {
+        guard Self.isHoverPreviewEnabled, let processID, let pillFrameInScreen else {
             context.hoverTarget = nil
             if !context.isPointerInsidePreview {
                 schedulePreviewHide(for: displayID, context: context)
@@ -593,6 +624,55 @@ final class DisplayPanelController {
             processID: processID,
             windowID: windowID
         )
+    }
+
+    private func showAppMenu(
+        displayID: CGDirectDisplayID,
+        processID: pid_t,
+        event: NSEvent,
+        view: NSView
+    ) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        let windows = barManager.windowTitles(for: processID, on: displayID)
+        for window in windows {
+            let item = ClosureMenuItem(title: window.title) { [weak self] in
+                self?.barManager.activateWindow(
+                    processID: processID,
+                    windowID: window.windowID
+                )
+            }
+            menu.addItem(item)
+        }
+
+        if !windows.isEmpty {
+            menu.addItem(.separator())
+        }
+
+        if let isPinned = barManager.pinState(ofRunningApp: processID, displayID: displayID) {
+            let pinItem = ClosureMenuItem(title: isPinned ? "Unpin from Bar" : "Pin to Bar") { [weak self] in
+                if isPinned {
+                    self?.barManager.unpinRunningApp(processID: processID, displayID: displayID)
+                } else {
+                    self?.barManager.pinRunningApp(processID: processID, displayID: displayID)
+                }
+            }
+            pinItem.image = NSImage(
+                systemSymbolName: isPinned ? "pin.slash" : "pin",
+                accessibilityDescription: nil
+            )
+            menu.addItem(pinItem)
+        }
+
+        let appName = NSRunningApplication(processIdentifier: processID)?.localizedName ?? "App"
+        let quitItem = ClosureMenuItem(title: "Quit \(appName)") { [weak self] in
+            self?.barManager.quitApplication(processID: processID)
+        }
+        quitItem.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
+        menu.addItem(quitItem)
+
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
     }
 
     private func handleQuitRequested() {
@@ -796,4 +876,24 @@ private final class DisplayPreviewContext {
 final class DisplayPanelWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+}
+
+/// Menu item that runs a closure; it is its own target.
+private final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(runHandler), keyEquivalent: "")
+        target = self
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    @objc private func runHandler() {
+        handler()
+    }
 }

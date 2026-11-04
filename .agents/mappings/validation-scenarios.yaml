@@ -37,3 +37,14 @@ validation_scenarios:
     steps:
       - move_frontmost_window_to_bottom_edge
       - verify_no_unintended_overlap
+
+  - id: pinned_apps
+    title: Pinned apps pin/open/unpin and display modes
+    required: true
+    steps:
+      - pin_running_app_from_pill_menu
+      - quit_app_and_reopen_from_pin
+      - reorder_from_pin_menu
+      - unpin_from_pin_menu
+      - switch_show_pins_on_modes_on_two_displays
+      - relaunch_bar_and_confirm_pins_persist

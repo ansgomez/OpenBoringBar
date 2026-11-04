@@ -20,6 +20,35 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
 
 ![App Launcher Search](docs/screenshots/file-search.png)
 
+## Using The Bar
+
+- **Click a pill** to bring that app forward. If it is already in front,
+  each click brings forward its next window on that display. Clicks never
+  minimize.
+- **Right-click a pill** to switch to one of the app's windows on that
+  display, pin or unpin the app, or quit it.
+- **Right-click empty bar space** for Quit OpenBoringBar, Auto-collapse, and
+  Show Pins On.
+
+### Pinned Apps
+
+Pinned apps are icons at the left of the bar that stay after the app quits.
+
+- **Pin**: open the app, right-click its pill, choose **Pin to Bar**.
+- **Open**: click the icon. A dot under it means the app is running.
+- **Reorder**: right-click the icon, choose **Move Left**, **Move Right**,
+  **Move to Start**, or **Move to End**.
+- **Unpin**: right-click the icon, choose **Unpin**.
+- **Show Pins On** (right-click empty bar space):
+  - **All Displays** (default): every bar shows the same pins.
+  - **Main Display Only**: only the bar on the display with the menu bar shows
+    pins.
+  - **Each Display Separately**: each display keeps its own list, which starts
+    as a copy of the shared list the first time you edit it.
+
+Pins follow an app when it moves, because they are matched by bundle
+identifier. A pin whose app cannot be found (for example, on an unplugged
+drive) is hidden, not deleted, and comes back when the app is found again.
 
 ## Requirements
 
@@ -37,12 +66,15 @@ This script runs:
 
 1. `pod install` to regenerate project/workspace metadata.
 2. `xcodebuild` for a Debug build of scheme `OpenBoringBar`.
+3. `xcodebuild test` for the `OpenBoringBarTests` unit tests. The test bundle
+   compiles the pin logic directly and does not launch the app.
 
 ## Manual Commands
 
 ```bash
 pod install
 xcodebuild -project OpenBoringBar.xcodeproj -scheme OpenBoringBar -configuration Debug -sdk macosx -destination 'platform=macOS' build
+xcodebuild -project OpenBoringBar.xcodeproj -scheme OpenBoringBar -configuration Debug -sdk macosx -destination 'platform=macOS' test
 ```
 
 ## Agent Workspace

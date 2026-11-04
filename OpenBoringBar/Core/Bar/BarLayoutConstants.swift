@@ -21,4 +21,11 @@ enum BarLayoutConstants {
     static let previewPanelShowDelay: TimeInterval = 1
     static let previewPanelHideDelay: TimeInterval = 1
     static let previewPanelFallbackWidth: CGFloat = 280
+    static let pinIconSize: CGFloat = 24
+    static let pinHitAreaSize: CGFloat = 30
+    static let pinSpacing: CGFloat = 0
+    static let pinRunningDotSize: CGFloat = 3
+    /// The pin strip never takes more than this share of the bar's width;
+    /// past that it scrolls sideways.
+    static let pinStripMaxWidthFraction: CGFloat = 0.4
 }

@@ -37,6 +37,7 @@ Priority is reliability of core behavior before visual polish.
 │   │   ├── Domain/Models/
 │   │   └── Infrastructure/
 │   └── Resources/
+├── OpenBoringBarTests/
 ├── scripts/
 │   ├── bootstrap.sh
 │   └── generate_xcodeproj.rb
@@ -76,7 +77,7 @@ Recommended read order:
 ## Core Commands
 
 ```bash
-# Full bootstrap + build (required after every code change)
+# Full bootstrap + build + unit tests (required after every code change)
 ./scripts/bootstrap.sh
 
 # Regenerate Xcode project from source globs (only when needed)
@@ -92,6 +93,11 @@ xcodebuild \
   -destination 'platform=macOS' \
   -derivedDataPath .build/DerivedData \
   build
+
+# Unit tests (same flags, `test` action)
+xcodebuild -project OpenBoringBar.xcodeproj -scheme OpenBoringBar \
+  -configuration Debug -sdk macosx -destination 'platform=macOS' \
+  -derivedDataPath .build/DerivedData test
 ```
 
 ## Current Architecture (Must Follow)
@@ -116,6 +122,8 @@ OpenBoringBar/
       BarManager.swift
       ActiveWindowBottomGuardManager.swift
       BarLayoutConstants.swift
+      PinnedAppManager.swift
+      PinnedAppMatcher.swift
     DisplayBar/
       AppWindowPreviewPanelView.swift
       AppWindowPreviewPanelWindow.swift
@@ -127,10 +135,20 @@ OpenBoringBar/
         AppWindowPreviewItem.swift
         BarModels.swift
         LaunchableApplicationItem.swift
+        PinDisplayMode.swift
+        PinMove.swift
+        PinnedApp.swift
+        PinnedAppItem.swift
+        PinnedAppsSnapshot.swift
+        RunningAppDescriptor.swift
     Infrastructure/
       Application/
+        ApplicationLocationProvider.swift
+        DockNotificationBadgeProvider.swift
         InstalledApplicationProvider.swift
         WindowPreviewProvider.swift
+      Persistence/
+        PinnedAppStorageProvider.swift
       Accessibility/
         AXElementInspector.swift
       Screen/
@@ -139,7 +157,34 @@ OpenBoringBar/
     Assets.xcassets/
       AppIcon.appiconset/
     Info.plist
+OpenBoringBarTests/
+  PinnedAppManagerTests.swift
+  PinnedAppMatcherTests.swift
+  PinnedAppStorageProviderTests.swift
+  PinnedAppTestDoubles.swift
 ```
+
+### Unit Tests
+
+1. `OpenBoringBarTests` is a hostless unit-test bundle: it has no `TEST_HOST`
+   and compiles the app sources it tests directly, listed in
+   `APP_SOURCES_UNDER_TEST` in `scripts/generate_xcodeproj.rb`. Running tests
+   never launches the bar app.
+2. Only add sources without app-wide side effects to that list. Inject
+   system access through protocols (for example `ApplicationLocating`,
+   `PinnedAppStoring`) and use fakes in tests.
+3. The generator saves a shared `OpenBoringBar` scheme whose test action runs
+   this bundle.
+
+### Pinned Apps
+
+1. `PinnedAppManager` (`Core/Bar`) owns pin state and saves it through
+   `PinnedAppStoring` as JSON under `OpenBoringBar.pinnedApps`.
+2. `BarManager` attaches pins to each `DisplayState` after
+   `BarDisplayStateBuilder` runs, and calls `scheduleDisplayRefresh()` after
+   each pin change. Pin traffic stays inside `Core/Bar`, so it adds no
+   `AppEvent` cases.
+3. Pins are never deleted automatically; unresolved pins are kept and hidden.
 
 ## Layer Responsibilities
 
@@ -220,6 +265,7 @@ After every code change:
    - app switch from capsule
    - launcher open/search/launch
    - bottom guard behavior for frontmost window
+   - pinned apps (pin, open, unpin, Show Pins On modes)
 
 ## Documentation Freshness Policy (Strict)
 

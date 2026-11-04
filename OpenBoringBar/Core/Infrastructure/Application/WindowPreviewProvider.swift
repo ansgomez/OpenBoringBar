@@ -13,9 +13,129 @@ protocol WindowPreviewProviding {
         windowID: CGWindowID,
         processID: pid_t
     ) -> Bool
+
+    /// On-screen, normal-layer windows of the process, front-to-back.
+    /// Pass `nil` for `displayID` to include every display.
+    func orderedWindowIDs(
+        for processID: pid_t,
+        displayID: CGDirectDisplayID?
+    ) -> [CGWindowID]
+
+    /// Window IDs and titles on `displayID`, left to right. No screenshots.
+    func windowTitles(
+        for processID: pid_t,
+        displayID: CGDirectDisplayID
+    ) -> [(windowID: CGWindowID, title: String)]
 }
 
 final class WindowPreviewProvider: WindowPreviewProviding {
+    func windowTitles(
+        for processID: pid_t,
+        displayID: CGDirectDisplayID
+    ) -> [(windowID: CGWindowID, title: String)] {
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return []
+        }
+
+        let displayBounds = CGDisplayBounds(displayID)
+        let appName = NSRunningApplication(processIdentifier: processID)?.localizedName ?? "Window"
+        var windows: [(windowID: CGWindowID, title: String?, frame: CGRect)] = []
+
+        for windowInfo in windowList {
+            guard let ownerPIDNumber = windowInfo[kCGWindowOwnerPID as String] as? NSNumber,
+                  pid_t(ownerPIDNumber.int32Value) == processID,
+                  let windowIDNumber = windowInfo[kCGWindowNumber as String] as? NSNumber else {
+                continue
+            }
+
+            if let layerNumber = windowInfo[kCGWindowLayer as String] as? NSNumber,
+               layerNumber.intValue != 0 {
+                continue
+            }
+
+            if let alphaNumber = windowInfo[kCGWindowAlpha as String] as? NSNumber,
+               alphaNumber.doubleValue <= 0 {
+                continue
+            }
+
+            guard let boundsDictionary = windowInfo[kCGWindowBounds as String] as? NSDictionary,
+                  let windowBounds = CGRect(dictionaryRepresentation: boundsDictionary),
+                  !windowBounds.isEmpty,
+                  displayBounds.intersects(windowBounds) else {
+                continue
+            }
+
+            let title = (windowInfo[kCGWindowName as String] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            windows.append((CGWindowID(windowIDNumber.uint32Value), title, windowBounds))
+        }
+
+        windows.sort { lhs, rhs in
+            if lhs.frame.minX != rhs.frame.minX {
+                return lhs.frame.minX < rhs.frame.minX
+            }
+            if lhs.frame.minY != rhs.frame.minY {
+                return lhs.frame.minY > rhs.frame.minY
+            }
+            return lhs.windowID < rhs.windowID
+        }
+
+        return windows.enumerated().map { index, window in
+            if let title = window.title, !title.isEmpty {
+                return (window.windowID, title)
+            }
+            return (window.windowID, "\(appName) \(index + 1)")
+        }
+    }
+
+    func orderedWindowIDs(
+        for processID: pid_t,
+        displayID: CGDirectDisplayID?
+    ) -> [CGWindowID] {
+        // CGWindowListCopyWindowInfo returns windows in front-to-back order.
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return []
+        }
+
+        let displayBounds = displayID.map(CGDisplayBounds)
+
+        return windowList.compactMap { windowInfo in
+            guard let ownerPIDNumber = windowInfo[kCGWindowOwnerPID as String] as? NSNumber,
+                  pid_t(ownerPIDNumber.int32Value) == processID,
+                  let windowIDNumber = windowInfo[kCGWindowNumber as String] as? NSNumber else {
+                return nil
+            }
+
+            if let layerNumber = windowInfo[kCGWindowLayer as String] as? NSNumber,
+               layerNumber.intValue != 0 {
+                return nil
+            }
+
+            if let alphaNumber = windowInfo[kCGWindowAlpha as String] as? NSNumber,
+               alphaNumber.doubleValue <= 0 {
+                return nil
+            }
+
+            guard let boundsDictionary = windowInfo[kCGWindowBounds as String] as? NSDictionary,
+                  let windowBounds = CGRect(dictionaryRepresentation: boundsDictionary),
+                  !windowBounds.isEmpty else {
+                return nil
+            }
+
+            if let displayBounds, !displayBounds.intersects(windowBounds) {
+                return nil
+            }
+
+            return CGWindowID(windowIDNumber.uint32Value)
+        }
+    }
+
     func fetchWindowPreviews(
         for processID: pid_t,
         displayID: CGDirectDisplayID
