@@ -29,7 +29,8 @@ struct WorkspaceRowView: View {
                     )
                 }
             }
-            .padding(.horizontal, 8)
+            // No leading inset: groups line up with the pills below.
+            .padding(.trailing, 8)
             .frame(maxHeight: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)

@@ -29,6 +29,8 @@ enum BarLayoutConstants {
     static let pinIconSize: CGFloat = 24
     static let pinHitAreaSize: CGFloat = 30
     static let pinSpacing: CGFloat = 0
+    /// Gap between the two pin rows when the workspace row is shown.
+    static let pinRowSpacing: CGFloat = 4
     static let pinRunningDotSize: CGFloat = 3
     /// The pin strip never takes more than this share of the bar's width;
     /// past that it scrolls sideways.

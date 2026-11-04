@@ -73,6 +73,9 @@ every 2 seconds. Set AeroSpace's `gaps.outer.bottom` to at least the bar height
 ### Pinned Apps
 
 Pinned apps are icons at the left of the bar that stay after the app quits.
+They span the full bar height: with the AeroSpace workspace row shown they
+sit in two rows (top row first, left to right), and the workspace row and the
+pills start at the same left edge to their right.
 
 - **Pin**: open the app, right-click its pill, choose **Pin to Bar**.
 - **Open**: click the icon. A dot under it means the app is running.

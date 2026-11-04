@@ -42,6 +42,10 @@ struct DisplayBottomBarView: View {
 
     @State private var isApplicationLauncherPresented = false
 
+    private var isWorkspaceRowVisible: Bool {
+        isAeroSpaceAvailable && showsWorkspaces
+    }
+
     private var appLayoutAnimationKeys: [String] {
         apps.map { "\($0.id)-\($0.name)" }
     }
@@ -55,39 +59,41 @@ struct DisplayBottomBarView: View {
                         .stroke(Color.white.opacity(0.55), lineWidth: 1)
                 )
 
-            VStack(spacing: 0) {
-                if isAeroSpaceAvailable && showsWorkspaces {
-                    WorkspaceRowView(
-                        groups: workspaceGroups,
-                        emptyWorkspaceTarget: emptyWorkspaceTarget,
-                        onSwitchWorkspace: onSwitchWorkspace,
-                        onFocusWindow: onFocusWorkspaceWindow,
-                        onMoveWindow: onMoveWindowToWorkspace
-                    )
-                    .frame(height: BarLayoutConstants.workspaceRowHeight)
-
-                    Divider()
-                        .padding(.horizontal, 8)
-                }
-
-                HStack(spacing: 8) {
+            HStack(spacing: 8) {
 // Pseudo-requirement: users can already open the app they want with Command + Space, so we shouldn’t blindly copy BoringBar wholesale.
 //                applicationLauncherButton
 //
 //                Divider()
 //                    .padding(.vertical, 9)
 
-                    if !pinnedApps.isEmpty {
-                        DisplayBarPinnedStrip(
-                            pinnedApps: pinnedApps,
-                            maxWidth: pinStripMaxWidth,
-                            onOpen: onOpenPinnedApp,
-                            onUnpin: onUnpinPinnedApp,
-                            onMove: onMovePinnedApp
+                // Pins span the full bar height, left of both rows.
+                if !pinnedApps.isEmpty {
+                    DisplayBarPinnedStrip(
+                        pinnedApps: pinnedApps,
+                        rowCount: isWorkspaceRowVisible ? 2 : 1,
+                        maxWidth: pinStripMaxWidth,
+                        onOpen: onOpenPinnedApp,
+                        onUnpin: onUnpinPinnedApp,
+                        onMove: onMovePinnedApp
+                    )
+
+                    Divider()
+                        .padding(.vertical, 9)
+                }
+
+                VStack(spacing: 0) {
+                    if isWorkspaceRowVisible {
+                        WorkspaceRowView(
+                            groups: workspaceGroups,
+                            emptyWorkspaceTarget: emptyWorkspaceTarget,
+                            onSwitchWorkspace: onSwitchWorkspace,
+                            onFocusWindow: onFocusWorkspaceWindow,
+                            onMoveWindow: onMoveWindowToWorkspace
                         )
+                        .frame(height: BarLayoutConstants.workspaceRowHeight)
 
                         Divider()
-                            .padding(.vertical, 9)
+                            .padding(.trailing, 8)
                     }
 
                     Group {
@@ -136,18 +142,18 @@ struct DisplayBottomBarView: View {
                             )
                         }
                     }
+                    .frame(height: BarLayoutConstants.panelHeight)
                 }
-                .padding(.leading, 8)
-                .animation(
-                    DisplayBottomBarAnimation.contentSwap,
-                    value: apps.isEmpty
-                )
-                .animation(
-                    DisplayBottomBarAnimation.appListMutation,
-                    value: appLayoutAnimationKeys
-                )
-                .frame(height: BarLayoutConstants.panelHeight)
             }
+            .padding(.leading, 8)
+            .animation(
+                DisplayBottomBarAnimation.contentSwap,
+                value: apps.isEmpty
+            )
+            .animation(
+                DisplayBottomBarAnimation.appListMutation,
+                value: appLayoutAnimationKeys
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onHover(perform: onBarHoverChanged)
@@ -259,31 +265,54 @@ struct DisplayBottomBarView: View {
 /// `maxWidth`; scrolls sideways past that.
 private struct DisplayBarPinnedStrip: View {
     let pinnedApps: [PinnedAppItem]
+    /// 2 when the bar is tall enough (workspace row shown), else 1. Pins fill
+    /// the rows in reading order: top row left to right, then the bottom row.
+    let rowCount: Int
     let maxWidth: CGFloat
     let onOpen: (PinnedAppItem) -> Void
     let onUnpin: (PinnedAppItem) -> Void
     let onMove: (PinnedAppItem, PinMove) -> Void
 
+    private var columnCount: Int {
+        let rows = max(1, rowCount)
+        return (pinnedApps.count + rows - 1) / rows
+    }
+
     private var contentWidth: CGFloat {
-        let count = CGFloat(pinnedApps.count)
+        let count = CGFloat(columnCount)
         return count * BarLayoutConstants.pinHitAreaSize
             + max(0, count - 1) * BarLayoutConstants.pinSpacing
     }
 
+    private var rows: [[(index: Int, item: PinnedAppItem)]] {
+        let indexed = pinnedApps.enumerated().map { (index: $0.offset, item: $0.element) }
+        guard columnCount > 0 else {
+            return []
+        }
+        return stride(from: 0, to: indexed.count, by: columnCount).map {
+            Array(indexed[$0..<min($0 + columnCount, indexed.count)])
+        }
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BarLayoutConstants.pinSpacing) {
-                ForEach(Array(pinnedApps.enumerated()), id: \.element.id) { index, item in
-                    DisplayBarPinnedIcon(
-                        item: item,
-                        isFirst: index == 0,
-                        isLast: index == pinnedApps.count - 1,
-                        onOpen: onOpen,
-                        onUnpin: onUnpin,
-                        onMove: onMove
-                    )
+            VStack(alignment: .leading, spacing: BarLayoutConstants.pinRowSpacing) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: BarLayoutConstants.pinSpacing) {
+                        ForEach(row, id: \.item.id) { entry in
+                            DisplayBarPinnedIcon(
+                                item: entry.item,
+                                isFirst: entry.index == 0,
+                                isLast: entry.index == pinnedApps.count - 1,
+                                onOpen: onOpen,
+                                onUnpin: onUnpin,
+                                onMove: onMove
+                            )
+                        }
+                    }
                 }
             }
+            .frame(maxHeight: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(width: min(contentWidth, maxWidth))
