@@ -22,6 +22,9 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
 
 ## Using The Bar
 
+OpenBoringBar runs as a background app: it has no Dock icon, no menu bar and
+does not appear in Command-Tab. Quit it from the bar's right-click menu.
+
 - **Click a pill** to bring that app forward. If it is already in front,
   each click brings forward its next window on that display. Clicks never
   minimize.
