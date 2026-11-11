@@ -766,7 +766,6 @@ final class DisplayPanelController {
         let menu = builder.menu(
             favorites: barManager.favoriteApplications(),
             frequent: barManager.frequentApplications(on: displayID),
-            hiddenFrequentCount: barManager.hiddenFrequentApplicationCount,
             all: barManager.launchableApplications,
             folders: barManager.folderPeekManager.startMenuFolders,
             layouts: barManager.isAeroSpaceAvailable ? barManager.workspaceLayouts() : nil,
@@ -781,9 +780,6 @@ final class DisplayPanelController {
             },
             onHideFrequent: { [barManager] bundleIdentifier in
                 barManager.hideFromFrequentApplications(bundleIdentifier: bundleIdentifier)
-            },
-            onRestoreHiddenFrequent: { [barManager] in
-                barManager.restoreHiddenFrequentApplications()
             },
             onMoveFolderToBar: { [barManager] folder in
                 barManager.folderPeekManager.setInStartMenu(false, for: folder)

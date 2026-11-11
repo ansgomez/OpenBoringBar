@@ -18,7 +18,6 @@ final class StartMenuBuilder {
     func menu(
         favorites: [LaunchableApplicationItem],
         frequent: [LaunchableApplicationItem],
-        hiddenFrequentCount: Int,
         all: [LaunchableApplicationItem],
         folders: [PeekFolder],
         layouts: [WorkspaceLayoutScript]?,
@@ -26,7 +25,6 @@ final class StartMenuBuilder {
         onRunLayout: @escaping (WorkspaceLayoutScript) -> Void,
         onRemoveFavorite: @escaping (String) -> Void,
         onHideFrequent: @escaping (String) -> Void,
-        onRestoreHiddenFrequent: @escaping () -> Void,
         onMoveFolderToBar: @escaping (PeekFolder) -> Void,
         onRemoveFolder: @escaping (PeekFolder) -> Void
     ) -> NSMenu {
@@ -43,9 +41,6 @@ final class StartMenuBuilder {
         }
 
         let removeFrequentTitle = "Remove from Frequently Used"
-        let restore: (title: String, handler: () -> Void)? = hiddenFrequentCount > 0
-            ? ("Restore Removed Apps (\(hiddenFrequentCount))", onRestoreHiddenFrequent)
-            : nil
         menu.addItem(.sectionHeader(title: "Frequently Used"))
         if frequent.isEmpty {
             let empty = NSMenuItem(title: "No apps used yet", action: nil, keyEquivalent: "")
@@ -54,17 +49,7 @@ final class StartMenuBuilder {
         }
         for app in frequent {
             menu.addItem(
-                Self.item(
-                    for: app, onOpen: onOpen, removeTitle: removeFrequentTitle, onRemove: onHideFrequent,
-                    restore: restore
-                )
-            )
-        }
-        // Normally reached from an item's right-click menu; shown here only
-        // when every app was removed and there is no item left to click.
-        if frequent.isEmpty, hiddenFrequentCount > 0 {
-            menu.addItem(
-                ClosureMenuItem(title: "Restore Removed Apps (\(hiddenFrequentCount))", handler: onRestoreHiddenFrequent)
+                Self.item(for: app, onOpen: onOpen, removeTitle: removeFrequentTitle, onRemove: onHideFrequent)
             )
         }
         menu.addItem(.separator())
@@ -128,18 +113,14 @@ final class StartMenuBuilder {
         for app: LaunchableApplicationItem,
         onOpen: @escaping (URL) -> Void,
         removeTitle: String = "",
-        onRemove: ((String) -> Void)? = nil,
-        restore: (title: String, handler: () -> Void)? = nil
+        onRemove: ((String) -> Void)? = nil
     ) -> NSMenuItem {
         let url = app.bundleURL
         let item = ClosureMenuItem(title: app.name) {
             if let onRemove, let identifier = app.bundleIdentifier, isSecondaryClick(NSApp.currentEvent) {
                 // The Start menu has closed by now; show the item's own menu.
                 DispatchQueue.main.async {
-                    itemMenu(
-                        for: app, identifier: identifier, removeTitle: removeTitle,
-                        onOpen: onOpen, onRemove: onRemove, restore: restore
-                    )
+                    itemMenu(for: app, identifier: identifier, removeTitle: removeTitle, onOpen: onOpen, onRemove: onRemove)
                         .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
                 }
             } else if NSEvent.modifierFlags.contains(.option) {
@@ -175,8 +156,7 @@ final class StartMenuBuilder {
         identifier: String,
         removeTitle: String,
         onOpen: @escaping (URL) -> Void,
-        onRemove: @escaping (String) -> Void,
-        restore: (title: String, handler: () -> Void)?
+        onRemove: @escaping (String) -> Void
     ) -> NSMenu {
         let url = app.bundleURL
         let menu = NSMenu(title: app.name)
@@ -187,9 +167,6 @@ final class StartMenuBuilder {
         })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(title: removeTitle) { onRemove(identifier) })
-        if let restore {
-            menu.addItem(ClosureMenuItem(title: restore.title, handler: restore.handler))
-        }
         return menu
     }
 }

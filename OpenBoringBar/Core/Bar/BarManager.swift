@@ -911,15 +911,8 @@ final class BarManager: ObservableObject {
         }
     }
 
-    /// Apps removed from "Frequently Used" by the user.
-    var hiddenFrequentApplicationCount: Int { appUsageManager.hiddenCount }
-
     func hideFromFrequentApplications(bundleIdentifier: String) {
         appUsageManager.hide(bundleIdentifier: bundleIdentifier)
-    }
-
-    func restoreHiddenFrequentApplications() {
-        appUsageManager.unhideAll()
     }
 
     /// Layout scripts for the Start menu; none without AeroSpace.

@@ -120,13 +120,14 @@ final class AppUsageTests: XCTestCase {
         manager.hide(bundleIdentifier: "com.test.alpha")
 
         let reloaded = AppUsageManager(storage: storage, now: { self.now })
-        XCTAssertEqual(reloaded.hiddenCount, 1)
         let apps = [app("Alpha"), app("Beta")]
         XCTAssertEqual(
             reloaded.frequentApplications(among: apps, alwaysIncludedBundleIdentifiers: [], limit: 5).map(\.name),
             ["Beta"]
         )
-        reloaded.unhideAll()
+        // Adding it to the Start menu undoes the removal for good.
+        reloaded.addFavorite(bundleIdentifier: "com.test.alpha")
+        reloaded.removeFavorite(bundleIdentifier: "com.test.alpha")
         XCTAssertEqual(
             reloaded.frequentApplications(among: apps, alwaysIncludedBundleIdentifiers: [], limit: 5).count, 2
         )

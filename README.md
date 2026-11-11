@@ -61,8 +61,7 @@ The Apple-logo button at the far left of the bar opens a menu:
   habits. On first launch the list starts from what Spotlight recorded for
   apps used in the last 30 days. Right-click (or Control-click) an app in
   this list and choose **Remove from Frequently Used** to keep it out for
-  good; **Restore Removed Apps** in that same right-click menu brings them
-  all back.
+  good. To bring one back, add it again with **Add to Start Menu**.
 - **All Applications**: every installed app by name (type to jump to a name).
 - **Applications Folder**: browse `/Applications`, subfolders as submenus,
   with **Open “Applications” in Finder** at the top.

@@ -38,16 +38,17 @@ final class AppUsageManager {
         save()
     }
 
-    var hiddenCount: Int { hidden.count }
-
     func isFavorite(bundleIdentifier: String) -> Bool {
         favorites.contains(bundleIdentifier)
     }
 
+    /// Also undoes an earlier removal from "Frequently Used": adding an app
+    /// to the Start menu is how a removed app comes back.
     func addFavorite(bundleIdentifier: String) {
         guard !favorites.contains(bundleIdentifier) else {
             return
         }
+        hidden.remove(bundleIdentifier)
         favorites.append(bundleIdentifier)
         save()
     }
@@ -62,11 +63,6 @@ final class AppUsageManager {
 
     func hide(bundleIdentifier: String) {
         hidden.insert(bundleIdentifier)
-        save()
-    }
-
-    func unhideAll() {
-        hidden.removeAll()
         save()
     }
 
