@@ -283,7 +283,7 @@ shown, so that window can be found again.
    pills in place of icons; otherwise the per-app pills follow the groups.
    Groups are in keyboard order (1–9, 0, then other names) and include empty
    workspaces only while Show Empty Workspaces
-   (`OpenBoringBar.showEmptyWorkspaces`, default off) is set; the "+" drop
+   (`OpenBoringBar.showEmptyWorkspaces`, default on) is set; the "+" drop
    target is only drawn when it is off.
 4. Pills Follow Workspace (`OpenBoringBar.pillsFollowWorkspace`, default on):
    `BarManager` replaces `DisplayState.apps` with one `RunningAppItem` per

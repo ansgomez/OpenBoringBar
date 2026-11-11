@@ -51,7 +51,7 @@ final class AeroSpaceWorkspaceManager {
         self.defaults = defaults
         self.showsWorkspaces = defaults.object(forKey: Self.showsWorkspacesDefaultsKey) as? Bool ?? true
         self.pillsFollowWorkspace = defaults.object(forKey: Self.pillsFollowWorkspaceDefaultsKey) as? Bool ?? true
-        self.showsEmptyWorkspaces = defaults.object(forKey: Self.showsEmptyWorkspacesDefaultsKey) as? Bool ?? false
+        self.showsEmptyWorkspaces = defaults.object(forKey: Self.showsEmptyWorkspacesDefaultsKey) as? Bool ?? true
     }
 
     deinit {

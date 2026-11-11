@@ -98,11 +98,12 @@ terminal: `terminal-finder-preview [workspace]`.
 ### AeroSpace Workspaces
 
 If [AeroSpace](https://github.com/nikitabobko/AeroSpace) is installed, the
-bar's single row (44 pt) shows one group per workspace on that display that
-has windows, in the order of the keyboard's number row (1–9, then 0), then any
-other names. The workspace on screen holds its window pills; the others show
-an icon per window. Empty workspaces are hidden, except the one on screen. The
-focused workspace's name is in the accent color.
+bar's single row (44 pt) shows one group per workspace on that display, in
+the order of the keyboard's number row (1–9, then 0), then any other names.
+The workspace on screen holds its window pills; the others show an icon per
+window. Empty workspaces are shown too, dimmed, so every workspace can be
+clicked or used as a drop target. The focused workspace's name is in the
+accent color.
 
 Which workspaces exist when empty is up to AeroSpace: list them under
 `persistent-workspaces` in `~/.aerospace.toml`.
@@ -111,12 +112,13 @@ Which workspaces exist when empty is up to AeroSpace: list them under
   or just above or below the group) to go to it.
 - **Click an icon** to focus that window.
 - **Drag an icon** onto another group to move the window there. With Show
-  Empty Workspaces off (the default), drop it on the dashed **+** to move it to the first
-  empty workspace (1–9 first; `0` is never used). Moves are manual, so they may exceed any window limit you enforce in
-  AeroSpace.
+  Empty Workspaces off, drop it on the dashed **+** to move it to the first
+  empty workspace (1–9 first; `0` is never used). Moves are manual, so they
+  may exceed any window limit you enforce in AeroSpace.
 - **Show Workspaces** in the bar menu turns the groups off.
-- **Show Empty Workspaces** (bar menu, off by default): turned on, empty
-  workspaces are shown too, dimmed, and the dashed **+** goes away.
+- **Show Empty Workspaces** (bar menu, on by default): turned off, only
+  workspaces with windows and the one on screen are shown, plus a dashed
+  **+** as the drop target for the first empty workspace.
 - **Pills Follow Workspace** (bar menu, on by default): the group of the
   workspace on screen shows one pill per window, titled with the window title;
   tiled windows left to right, then floating ones. Turned off, every group
