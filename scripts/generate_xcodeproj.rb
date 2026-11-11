@@ -61,6 +61,7 @@ module OpenBoringBarProjectGenerator
         'OpenBoringBar/Core/Bar/AppUsageManager.swift',
         'OpenBoringBar/Core/Domain/Models/PinClickAction.swift',
         'OpenBoringBar/Core/Bar/PinClickRule.swift',
+        'OpenBoringBar/Core/Bar/PinStackLayout.swift',
         'OpenBoringBar/Core/Bar/AeroSpaceStateRetentionRule.swift',
         'OpenBoringBar/Core/Domain/Models/AppMenuItemInfo.swift',
         'OpenBoringBar/Core/Bar/NewWindowMenuItemRule.swift',

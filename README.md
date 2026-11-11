@@ -121,14 +121,22 @@ Which workspaces exist when empty is up to AeroSpace: list them under
   **+** as the drop target for the first empty workspace.
 - **Pills Follow Workspace** (bar menu, on by default): the group of the
   workspace on screen shows one pill per window, titled with the window title;
-  tiled windows left to right, then floating ones. Turned off, every group
+  tiled windows left to right, then floating ones. Only the focused window
+  keeps its full pill: the others fold to their icon, and neighbouring folded
+  pills overlap in a diagonal stack. Move the pointer onto a folded pill to
+  unfold them all; they fold again when the pointer leaves the pills. The
+  focused window's pill does not unfold them. Turned off, every group
   shows icons and the per-app pills follow the groups. The focused window's pill
   is highlighted, and clicking a pill focuses that window. Drag a pill onto a
   workspace group (or **+**) to move that window there. Use the workspace
   row to reach other workspaces. Turned off, pills are one per app as below.
-  A minimized window keeps its pill on the workspace it was minimized from,
-  dimmed and in italics; click it to restore the window there. Window menus
-  list minimized windows too, marked "(minimized)".
+  Window menus list minimized windows too, marked "(minimized)".
+- **Minimized windows** sit in their own **–** group after the workspaces,
+  one dimmed icon per window, and do not belong to a workspace. Click an
+  icon to restore the window onto the workspace on screen. Drop an icon or
+  pill on the group to minimize that window. The group is hidden when
+  nothing is minimized. (With Show Workspaces off, a minimized window keeps a
+  dimmed pill on the workspace it was minimized from.)
 
 If AeroSpace stops answering, the groups stay for 3 seconds, then go
 away and the pills remain on their own.
@@ -177,6 +185,12 @@ Stats** in the bar menu.
 Pinned apps are icons at the left of the bar that stay after the app quits.
 The workspace groups and pills start to their right.
 
+- **Idle pins are stacked.** Pinned apps that are not running overlap in a
+  diagonal stack at the far left to save space (from two idle pins on). Move
+  the pointer over the stack and it unfolds to full-size icons; it folds
+  again when the pointer leaves. Pins of running apps stay at full size to
+  the right of the stack, so a pin moves out of the stack when its app
+  starts.
 - **Running apps that are not pinned** follow the pins after a thin
   divider, like in the Dock, in the order they were launched, whether or not
   they have a window. They leave when the app quits. Click works as for a

@@ -30,6 +30,9 @@ struct DisplayState: Identifiable {
     var runningUnpinnedApps: [PinnedAppItem] = []
     /// AeroSpace workspaces on this display; empty when the row is hidden.
     var workspaceGroups: [WorkspaceGroup] = []
+    /// Minimized windows of this display, drawn as the "–" group after the
+    /// workspaces. Empty when the workspace groups are hidden.
+    var minimizedWindows: [MinimizedWindow] = []
     /// Workspace the row's "+" target moves windows to, if one is free.
     var emptyWorkspaceTarget: String? = nil
 }

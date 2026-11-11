@@ -71,8 +71,9 @@ validation_scenarios:
       - toggle_show_workspaces_off_and_verify_only_pills_remain
       - with_pills_follow_workspace_verify_visible_group_holds_one_pill_per_window_and_click_focuses_it
       - drag_pill_onto_workspace_group_and_verify_window_moved
-      - minimize_window_and_verify_dimmed_pill_stays_on_its_workspace
-      - click_dimmed_pill_from_another_workspace_and_verify_window_restored_there
+      - minimize_window_and_verify_icon_in_minimized_group_on_every_workspace
+      - click_minimized_icon_and_verify_window_restored_on_current_workspace
+      - drop_pill_on_minimized_group_and_verify_window_minimized
 
   - id: start_menu
     title: Start menu and workspace layouts
@@ -83,6 +84,7 @@ validation_scenarios:
       - move_folder_widget_to_start_menu_and_back_to_bar
       - right_click_app_icon_add_to_start_menu_verify_favorites_then_remove
       - launch_unpinned_app_verify_icon_after_pins_then_close_its_window_and_quit_it
+      - hover_idle_pin_stack_verify_unfold_click_icon_and_fold_on_leave
       - open_app_from_all_applications_and_browse_applications_folder
       - on_empty_workspace_run_terminal_finder_preview_layout_and_verify_arrangement
       - toggle_show_empty_workspaces_and_verify_row_and_plus_target

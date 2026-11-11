@@ -9,6 +9,7 @@ protocol AeroSpaceControlling {
     func moveWindow(_ windowID: CGWindowID, toWorkspace workspace: String)
     func focusWindow(_ windowID: CGWindowID)
     func switchToWorkspace(_ workspace: String)
+    func minimizeWindow(_ windowID: CGWindowID)
 }
 
 /// Talks to AeroSpace through its CLI. Each CLI run takes ~20 ms (a state
@@ -63,6 +64,10 @@ final class AeroSpaceClient: AeroSpaceControlling {
 
     func switchToWorkspace(_ workspace: String) {
         _ = run(["workspace", workspace])
+    }
+
+    func minimizeWindow(_ windowID: CGWindowID) {
+        _ = run(["macos-native-minimize", "--window-id", String(windowID)])
     }
 
     private func run(_ arguments: [String]) -> String? {

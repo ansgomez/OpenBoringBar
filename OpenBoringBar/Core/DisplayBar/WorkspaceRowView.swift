@@ -4,14 +4,20 @@ import SwiftUI
 /// One group per AeroSpace workspace, in the bar's single row. A group shows
 /// an icon per window; with `expandsVisibleWorkspace`, the workspace on screen
 /// shows `pills` (the window pills) instead. Drag an icon or pill onto another
-/// group (or "+") to move the window. The caller provides the scroll view.
+/// group (or "+") to move the window. Minimized windows have their own "–"
+/// group after the workspaces: click an icon to restore the window onto the
+/// workspace on screen, drop a window on the group to minimize it. The
+/// caller provides the scroll view.
 struct WorkspaceRowView<Pills: View>: View {
     let groups: [WorkspaceGroup]
+    let minimizedWindows: [MinimizedWindow]
     let emptyWorkspaceTarget: String?
     let expandsVisibleWorkspace: Bool
     let onSwitchWorkspace: (String) -> Void
     let onFocusWindow: (CGWindowID) -> Void
     let onMoveWindow: (CGWindowID, String) -> Void
+    let onRestoreMinimizedWindow: (MinimizedWindow) -> Void
+    let onMinimizeWindow: (CGWindowID) -> Void
     @ViewBuilder let pills: () -> Pills
 
     var body: some View {
@@ -27,6 +33,14 @@ struct WorkspaceRowView<Pills: View>: View {
                 )
             }
 
+            if !minimizedWindows.isEmpty {
+                WorkspaceMinimizedGroupView(
+                    windows: minimizedWindows,
+                    onRestore: onRestoreMinimizedWindow,
+                    onMinimizeWindow: onMinimizeWindow
+                )
+            }
+
             if let emptyWorkspaceTarget {
                 WorkspaceEmptyTargetView(
                     workspace: emptyWorkspaceTarget,
@@ -35,6 +49,65 @@ struct WorkspaceRowView<Pills: View>: View {
             }
         }
         .frame(maxHeight: .infinity)
+    }
+}
+
+/// The "–" group: one dimmed icon per minimized window of the display.
+private struct WorkspaceMinimizedGroupView: View {
+    let windows: [MinimizedWindow]
+    let onRestore: (MinimizedWindow) -> Void
+    let onMinimizeWindow: (CGWindowID) -> Void
+
+    @State private var isDropTargeted = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text("–")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Color.primary.opacity(0.6))
+                .frame(minWidth: 12)
+                .padding(.trailing, 2)
+
+            ForEach(windows) { window in
+                Image(nsImage: AppIconProvider.shared.icon(
+                    forBundleIdentifier: NSRunningApplication(processIdentifier: window.processID)?.bundleIdentifier
+                ))
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(
+                    width: BarLayoutConstants.workspaceIconSize,
+                    height: BarLayoutConstants.workspaceIconSize
+                )
+                .opacity(0.6)
+                .contentShape(Rectangle())
+                .onTapGesture { onRestore(window) }
+                .help(
+                    (window.title.isEmpty ? window.appName : "\(window.appName) — \(window.title)")
+                        + " (minimized; click to restore here)"
+                )
+            }
+        }
+        .padding(.horizontal, 7)
+        .frame(height: BarLayoutConstants.workspaceGroupHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(isDropTargeted ? Color.accentColor.opacity(0.25) : Color.white.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(Color.accentColor, lineWidth: isDropTargeted ? 1.5 : 0)
+        )
+        .frame(maxHeight: .infinity)
+        .dropDestination(for: String.self) { items, _ in
+            guard let windowID = WorkspaceDragPayload.windowID(from: items),
+                  !windows.contains(where: { $0.id == windowID }) else {
+                return false
+            }
+            onMinimizeWindow(windowID)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .help("Minimized windows. Drop a window here to minimize it.")
     }
 }
 

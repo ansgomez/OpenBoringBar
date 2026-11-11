@@ -127,6 +127,7 @@ final class DisplayPanelController {
                 pinnedApps: state.pinnedApps,
                 runningUnpinnedApps: state.runningUnpinnedApps,
                 workspaceGroups: state.workspaceGroups,
+                minimizedWindows: state.minimizedWindows,
                 emptyWorkspaceTarget: state.emptyWorkspaceTarget,
                 barWidth: state.frame.width,
                 launchableApplications: launchableApplications
@@ -231,6 +232,7 @@ final class DisplayPanelController {
         pinnedApps: [PinnedAppItem],
         runningUnpinnedApps: [PinnedAppItem],
         workspaceGroups: [WorkspaceGroup],
+        minimizedWindows: [MinimizedWindow],
         emptyWorkspaceTarget: String?,
         barWidth: CGFloat,
         launchableApplications: [LaunchableApplicationItem]
@@ -269,6 +271,17 @@ final class DisplayPanelController {
                     Self.promptForImage(message: message)
                 },
                 workspaceGroups: workspaceGroups,
+                minimizedWindows: minimizedWindows,
+                onRestoreMinimizedWindow: { [barManager] window in
+                    barManager.restoreMinimizedWindow(
+                        processID: window.processID,
+                        windowID: window.id,
+                        displayID: displayID
+                    )
+                },
+                onMinimizeWindow: { [barManager] windowID in
+                    barManager.minimizeAeroSpaceWindow(windowID)
+                },
                 emptyWorkspaceTarget: emptyWorkspaceTarget,
                 onSwitchWorkspace: { [barManager] workspace in
                     barManager.switchToWorkspace(workspace)

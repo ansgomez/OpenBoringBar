@@ -191,6 +191,13 @@ OpenBoringBarTests/
    each pin change. Pin traffic stays inside `Core/Bar`, so it adds no
    `AppEvent` cases.
 3. Pins are never deleted automatically; unresolved pins are kept and hidden.
+   Idle pins (app not running) are drawn as a folded diagonal stack at the
+   far left that unfolds on hover; `PinStackLayout` (`Core/Bar`, pure,
+   unit-tested) holds the geometry, `DisplayBarPinnedStrip` draws it.
+   Window pills of the visible workspace fold the same way
+   (`DisplayBottomBarView.appPills(foldsIdle:)`): only the focused window
+   keeps its full pill, the others become icon chips until one of the
+   chips is hovered.
    Running regular apps that match no pin of the bar follow the pins in the
    strip (`DisplayState.runningUnpinnedApps`, `PinnedAppItem.isPinned` false,
    chosen by `PinnedAppMatcher.unpinnedRunningApps`).
@@ -296,6 +303,14 @@ shown, so that window can be found again.
    minimized windows and `WorkspaceGroupBuilder.minimizedWindows` places them as
    dimmed pills (`isMinimized`). Restoring focuses the remembered workspace
    first, because AeroSpace adds restored windows to the focused workspace.
+   That placement is only used with the workspace groups hidden. With the
+   groups shown, minimized windows are not tied to a workspace: they are
+   drawn in a "–" group after the workspaces
+   (`DisplayState.minimizedWindows`,
+   `WorkspaceGroupBuilder.minimizedGroupWindows`). The group is the bar's
+   own; AeroSpace has no such workspace and cannot hold minimized windows.
+   A click restores onto the workspace shown on that bar; a drop on the
+   group minimizes the window (`aerospace macos-native-minimize`).
 5. Off-screen windows: `OffScreenWindowRule` hides pills for apps whose
    windows are all parked by AeroSpace; window cycling and the pill window
    menu deliberately ignore that rule.

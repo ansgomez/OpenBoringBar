@@ -607,6 +607,27 @@ final class BarManager: ObservableObject {
         workspaceManager.focusWindow(windowID)
     }
 
+    /// Minimizes a window (a pill or icon dropped on the "–" group).
+    func minimizeAeroSpaceWindow(_ windowID: CGWindowID) {
+        workspaceManager.minimizeWindow(windowID)
+    }
+
+    /// Un-minimizes a window from the "–" group onto the workspace shown on
+    /// the given display. AeroSpace adds a restored window to the focused
+    /// workspace, so that workspace is focused first if it is not already.
+    func restoreMinimizedWindow(processID: pid_t, windowID: CGWindowID, displayID: CGDirectDisplayID) {
+        let state = workspaceManager.state
+        let target = PinClickRule.targetWorkspace(in: state, screenNumber: Self.screenNumber(of: displayID))
+        guard let target, workspaceManager.isAvailable, target != state.focusedWorkspace else {
+            activateWindow(processID: processID, windowID: windowID)
+            return
+        }
+        workspaceManager.switchToWorkspace(target)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.activateWindow(processID: processID, windowID: windowID)
+        }
+    }
+
     /// Minimized windows of one app, for its window menu.
     func minimizedWindows(of processID: pid_t) -> [MinimizedWindow] {
         MinimizedWindowProvider.minimizedWindows().filter { $0.processID == processID }
@@ -682,7 +703,16 @@ final class BarManager: ObservableObject {
                     )
                 }
 
-                if let visible = aeroSpaceState.workspaces.first(where: {
+                if showsRow {
+                    // Minimized windows get their own "–" group; they are
+                    // not tied to a workspace.
+                    state.minimizedWindows = WorkspaceGroupBuilder.minimizedGroupWindows(
+                        screenNumber: screenNumber,
+                        minimized: minimizedWindows,
+                        listedWindowIDs: listedWindowIDs,
+                        screenNumberOf: screenNumberOf
+                    )
+                } else if let visible = aeroSpaceState.workspaces.first(where: {
                     $0.screenNumber == screenNumber && $0.isVisible
                 }) {
                     state.apps += WorkspaceGroupBuilder.minimizedWindows(

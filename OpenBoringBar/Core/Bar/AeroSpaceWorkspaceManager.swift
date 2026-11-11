@@ -189,6 +189,10 @@ final class AeroSpaceWorkspaceManager {
         perform { $0.focusWindow(windowID) }
     }
 
+    func minimizeWindow(_ windowID: CGWindowID) {
+        perform { $0.minimizeWindow(windowID) }
+    }
+
     func switchToWorkspace(_ workspace: String) {
         perform { $0.switchToWorkspace(workspace) }
     }
