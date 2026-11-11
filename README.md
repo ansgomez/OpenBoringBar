@@ -44,7 +44,7 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
 
 ### Start Menu
 
-The grid button at the far left of the bar opens a menu:
+The Apple-logo button at the far left of the bar opens a menu:
 
 - **Frequently Used**: the 10 apps you use most, plus every app pinned on
   that bar, most used first. The bar counts each time an app comes to the
@@ -52,10 +52,14 @@ The grid button at the far left of the bar opens a menu:
   habits. On first launch the list starts from what Spotlight recorded for
   apps used in the last 30 days. Right-click (or Control-click) an app in
   this list and choose **Remove from Frequently Used** to keep it out for
-  good; **Restore Removed Apps** at the end of the list brings them all back.
+  good, or pick it in the **Remove from Frequently Used** submenu below the
+  list; **Restore Removed Apps** brings them all back.
 - **All Applications**: every installed app by name (type to jump to a name).
 - **Applications Folder**: browse `/Applications`, subfolders as submenus,
   with **Open “Applications” in Finder** at the top.
+- **Folders**: folders you moved here from the bar (right-click a folder
+  widget, **Move to Start Menu**), each as a submenu of its contents. The last
+  item of a submenu moves the folder back to the bar.
 - **Workspace Layouts** (with AeroSpace): see below.
 
 Click opens an app; Option-click reveals it in Finder.
@@ -116,6 +120,9 @@ Which workspaces exist when empty is up to AeroSpace: list them under
   dimmed and in italics; click it to restore the window there. Window menus
   list minimized windows too, marked "(minimized)".
 
+If AeroSpace stops answering, the groups stay for a few seconds, then go
+away and the pills remain on their own.
+
 AeroSpace does not report changes, so the bar re-reads it when an app is
 activated, when windows open, close or move, after each click or drop, and
 every 2 seconds. Set AeroSpace's `gaps.outer.bottom` to at least the bar height
@@ -126,8 +133,8 @@ every 2 seconds. Set AeroSpace's `gaps.outer.bottom` to at least the bar height
 Folder icons at the right of the bar (before the system stats). Click one for a menu of its contents: subfolders open as submenus,
 click opens an item, Option-click reveals it in Finder. Right-click a folder
 for Open in Finder, **Sort By** (Name, Date Added, Date Modified; folders stay
-on top for folders imported that way), **Badge**, **Icon**, **Add Folder…**
-and **Remove**.
+on top for folders imported that way), **Badge**, **Icon**, **Move to Start
+Menu**, **Add Folder…** and **Remove**.
 
 - **Badge** draws an image centered on the folder, with a white outline: any image
   file (**Choose Image…**, e.g. a Git logo PNG) or a built-in symbol (Download, Branch, Code, Chip, Book, Lecture, Document,
@@ -159,7 +166,12 @@ Stats** in the bar menu.
 Pinned apps are icons at the left of the bar that stay after the app quits.
 The workspace groups and pills start to their right.
 
-- **Pin**: open the app, right-click its pill, choose **Pin to Bar**.
+- **Running apps that are not pinned** follow the pins after a thin
+  divider, like in the Dock, in the order they were launched, whether or not
+  they have a window. They leave when the app quits. Click works as for a
+  pin; right-click for New Window, the app's windows, **Pin to Bar** and
+  **Quit**.
+- **Pin**: right-click the app's icon or pill, choose **Pin to Bar**.
 - **Open**: click the icon. A dot under it means the app is running.
 - **With AeroSpace, a click stays on the workspace you are in.** If the app
   has a window on the workspace shown on that bar, the click focuses it (more
@@ -169,10 +181,14 @@ The workspace groups and pills start to their right.
   right-click menu of the icon or of a pill. This always opens a new window on
   the current workspace.
 - New windows are opened by pressing the app's own menu item: "New Window",
-  else "New … Window" (not private or incognito ones), else whatever has the
-  shortcut Command-N. Apps with no such item, or where no window appears
-  within 2 seconds, are brought forward instead, which goes to their existing
+  else "New … Window" (not private or incognito ones), else the item with the
+  shortcut Command-N. A plain click only uses Command-N when the item is
+  titled "New", "New Document" or "New File", so it never creates a note, an
+  event or a message; Shift-click and **New Window** use whatever Command-N
+  is. Apps with no such item, or where no window appears within about
+  3 seconds, are brought forward instead, which goes to their existing
   window.
+- If AeroSpace is not running, a click brings the app forward, like the Dock.
 - **Reorder**: right-click the icon, choose **Move Left**, **Move Right**,
   **Move to Start**, or **Move to End**.
 - **Unpin**: right-click the icon, choose **Unpin**.

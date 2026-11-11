@@ -6,12 +6,19 @@ import Foundation
 /// "New … Window" (e.g. "New Finder Window"), but not a private-browsing one;
 /// the item with the shortcut Command-N. The last rule works in any language;
 /// the title rules only match English menus.
+///
+/// In many apps Command-N creates something else (a note, an event, a
+/// message). So the Command-N rule applies to any title only when the user
+/// asked for a new window (`isExplicitRequest`); for a plain pin click it
+/// needs a title that means a new document window ("New", "New Document",
+/// "New File").
 enum NewWindowMenuItemRule {
     private static let commandOnlyModifiers = 0
+    private static let documentTitles: Set<[String]> = [["new"], ["new", "document"], ["new", "file"]]
     private static let excludedWords: Set<String> = ["private", "incognito", "inprivate", "guest", "tab"]
 
     /// Index into `items` of the item to press, or `nil` when none fits.
-    static func bestIndex(in items: [AppMenuItemInfo]) -> Int? {
+    static func bestIndex(in items: [AppMenuItemInfo], isExplicitRequest: Bool = true) -> Int? {
         let candidates = items.enumerated().filter { $0.element.isEnabled && !$0.element.hasSubmenu }
 
         if let exact = candidates.first(where: { words(of: $0.element.title) == ["new", "window"] }) {
@@ -23,7 +30,9 @@ enum NewWindowMenuItemRule {
             return match.offset
         }
 
-        return candidates.first(where: { isCommandN($0.element) })?.offset
+        return candidates.first(where: {
+            isCommandN($0.element) && (isExplicitRequest || documentTitles.contains(words(of: $0.element.title)))
+        })?.offset
     }
 
     /// Whether a submenu with this title is worth reading (e.g. Terminal's

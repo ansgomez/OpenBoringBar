@@ -12,6 +12,7 @@ private enum DisplayBottomBarAnimation {
 struct DisplayBottomBarView: View {
     let apps: [RunningAppItem]
     let pinnedApps: [PinnedAppItem]
+    let runningUnpinnedApps: [PinnedAppItem]
     let pinStripMaxWidth: CGFloat
     let pinDisplayMode: PinDisplayMode
     let launchableApplications: [LaunchableApplicationItem]
@@ -58,6 +59,13 @@ struct DisplayBottomBarView: View {
         isAeroSpaceAvailable && showsWorkspaces
     }
 
+    /// The pills are drawn inside the group of the workspace on screen. False
+    /// when there is no such group (AeroSpace not running or not answering):
+    /// the pills then follow the groups, so they never disappear.
+    private var pillsAreInWorkspaceGroup: Bool {
+        pillsFollowWorkspace && workspaceGroups.contains { $0.isVisible }
+    }
+
     private var appLayoutAnimationKeys: [String] {
         apps.map { "\($0.id)-\($0.name)" }
     }
@@ -77,9 +85,10 @@ struct DisplayBottomBarView: View {
                 Divider()
                     .padding(.vertical, 9)
 
-                if !pinnedApps.isEmpty {
+                if !pinnedApps.isEmpty || !runningUnpinnedApps.isEmpty {
                     DisplayBarPinnedStrip(
                         pinnedApps: pinnedApps,
+                        runningApps: runningUnpinnedApps,
                         rowCount: 1,
                         maxWidth: pinStripMaxWidth,
                         onOpen: onOpenPinnedApp,
@@ -100,14 +109,14 @@ struct DisplayBottomBarView: View {
                                 WorkspaceRowView(
                                     groups: workspaceGroups,
                                     emptyWorkspaceTarget: emptyWorkspaceTarget,
-                                    expandsVisibleWorkspace: pillsFollowWorkspace,
+                                    expandsVisibleWorkspace: pillsAreInWorkspaceGroup,
                                     onSwitchWorkspace: onSwitchWorkspace,
                                     onFocusWindow: onFocusWorkspaceWindow,
                                     onMoveWindow: onMoveWindowToWorkspace,
                                     pills: { appPills }
                                 )
 
-                                if !pillsFollowWorkspace, !apps.isEmpty {
+                                if !pillsAreInWorkspaceGroup, !apps.isEmpty {
                                     Divider()
                                         .padding(.vertical, 9)
 
@@ -146,9 +155,6 @@ struct DisplayBottomBarView: View {
                 .frame(height: BarLayoutConstants.panelHeight)
 
                 if showsFolders {
-                    Divider()
-                        .padding(.vertical, 9)
-
                     FolderPeekStripView(
                         manager: folderPeekManager,
                         rowCount: 1,
@@ -340,7 +346,7 @@ private struct DisplayBarStartButton: View {
 
     var body: some View {
         Button(action: onShowMenu) {
-            Image(systemName: "square.grid.2x2.fill")
+            Image(systemName: "apple.logo")
                 .font(.system(size: BarLayoutConstants.startButtonSymbolSize, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(
@@ -357,7 +363,7 @@ private struct DisplayBarStartButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .help("Applications")
+        .help("Start menu: applications, folders, layouts")
     }
 }
 
@@ -365,6 +371,8 @@ private struct DisplayBarStartButton: View {
 /// `maxWidth`; scrolls sideways past that.
 private struct DisplayBarPinnedStrip: View {
     let pinnedApps: [PinnedAppItem]
+    /// Running apps that are not pinned, drawn after the pins like in the Dock.
+    let runningApps: [PinnedAppItem]
     /// 2 when the bar is tall enough (workspace row shown), else 1. Pins fill
     /// the rows in reading order: top row left to right, then the bottom row.
     let rowCount: Int
@@ -378,10 +386,14 @@ private struct DisplayBarPinnedStrip: View {
     }
 
     private var contentWidth: CGFloat {
-        let count = CGFloat(columnCount)
+        let count = CGFloat(columnCount + runningApps.count)
+        let separator = pinnedApps.isEmpty || runningApps.isEmpty ? 0 : Self.runningSeparatorWidth
         return count * BarLayoutConstants.pinHitAreaSize
             + max(0, count - 1) * BarLayoutConstants.pinSpacing
+            + separator
     }
+
+    private static let runningSeparatorWidth: CGFloat = 7
 
     private var rows: [[(index: Int, item: PinnedAppItem)]] {
         let indexed = pinnedApps.enumerated().map { (index: $0.offset, item: $0.element) }
@@ -395,6 +407,7 @@ private struct DisplayBarPinnedStrip: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: BarLayoutConstants.pinSpacing) {
             VStack(alignment: .leading, spacing: BarLayoutConstants.pinRowSpacing) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(spacing: BarLayoutConstants.pinSpacing) {
@@ -410,7 +423,19 @@ private struct DisplayBarPinnedStrip: View {
                     }
                 }
             }
-            .frame(maxHeight: .infinity)
+
+            if !pinnedApps.isEmpty, !runningApps.isEmpty {
+                Divider()
+                    .padding(.vertical, 13)
+                    .frame(width: Self.runningSeparatorWidth)
+            }
+
+            ForEach(runningApps) { item in
+                // No moves: these are not pins.
+                DisplayBarPinnedIcon(item: item, isFirst: true, isLast: true, onOpen: onOpen, onShowMenu: onShowMenu)
+            }
+          }
+          .frame(maxHeight: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(width: min(contentWidth, maxWidth))

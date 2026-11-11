@@ -125,6 +125,7 @@ final class DisplayPanelController {
                 displayID: state.id,
                 with: state.apps,
                 pinnedApps: state.pinnedApps,
+                runningUnpinnedApps: state.runningUnpinnedApps,
                 workspaceGroups: state.workspaceGroups,
                 emptyWorkspaceTarget: state.emptyWorkspaceTarget,
                 barWidth: state.frame.width,
@@ -228,6 +229,7 @@ final class DisplayPanelController {
         displayID: CGDirectDisplayID,
         with apps: [RunningAppItem],
         pinnedApps: [PinnedAppItem],
+        runningUnpinnedApps: [PinnedAppItem],
         workspaceGroups: [WorkspaceGroup],
         emptyWorkspaceTarget: String?,
         barWidth: CGFloat,
@@ -237,6 +239,7 @@ final class DisplayPanelController {
             DisplayBottomBarView(
                 apps: apps,
                 pinnedApps: pinnedApps,
+                runningUnpinnedApps: runningUnpinnedApps,
                 pinStripMaxWidth: barWidth * BarLayoutConstants.pinStripMaxWidthFraction,
                 pinDisplayMode: barManager.pinDisplayMode,
                 launchableApplications: launchableApplications,
@@ -764,6 +767,7 @@ final class DisplayPanelController {
             frequent: barManager.frequentApplications(on: displayID),
             hiddenFrequentCount: barManager.hiddenFrequentApplicationCount,
             all: barManager.launchableApplications,
+            folders: barManager.folderPeekManager.startMenuFolders,
             layouts: barManager.isAeroSpaceAvailable ? barManager.workspaceLayouts() : nil,
             onOpen: { [barManager] url in
                 barManager.openApplication(bundleURL: url)
@@ -776,6 +780,9 @@ final class DisplayPanelController {
             },
             onRestoreHiddenFrequent: { [barManager] in
                 barManager.restoreHiddenFrequentApplications()
+            },
+            onMoveFolderToBar: { [barManager] folder in
+                barManager.folderPeekManager.setInStartMenu(false, for: folder)
             }
         )
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
@@ -864,6 +871,13 @@ final class DisplayPanelController {
         event: NSEvent,
         view: NSView
     ) {
+        // A running app that is not pinned: same menu as its pill (New
+        // Window, its windows, Pin to Bar, Quit).
+        if !item.isPinned, let processID = item.processID {
+            showAppMenu(displayID: displayID, processID: processID, event: event, view: view)
+            return
+        }
+
         let menu = NSMenu()
         menu.autoenablesItems = false
 

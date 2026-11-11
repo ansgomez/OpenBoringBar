@@ -6,4 +6,7 @@ enum PinClickAction: Equatable {
     case focusWindow(CGWindowID)
     /// Open a new window on this workspace (`nil`: workspace unknown).
     case openNewWindow(workspace: String?)
+    /// AeroSpace reported no workspace (not running, or a failed read):
+    /// bring the app forward, like the Dock.
+    case activate
 }

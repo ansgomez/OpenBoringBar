@@ -191,10 +191,14 @@ OpenBoringBarTests/
    each pin change. Pin traffic stays inside `Core/Bar`, so it adds no
    `AppEvent` cases.
 3. Pins are never deleted automatically; unresolved pins are kept and hidden.
+   Running regular apps that match no pin of the bar follow the pins in the
+   strip (`DisplayState.runningUnpinnedApps`, `PinnedAppItem.isPinned` false,
+   chosen by `PinnedAppMatcher.unpinnedRunningApps`).
 4. Pin click with AeroSpace never leaves the workspace shown on the clicked
    bar: `PinClickRule` (`Core/Bar`, pure, unit-tested) returns a
-   `PinClickAction`, either focus the app's window there or open a new one.
-   Shift-click and the "New Window" menu items always open a new one.
+   `PinClickAction`: focus the app's window there, open a new one, or
+   `.activate` when AeroSpace reports no workspace (not running, failed
+   read). Shift-click and the "New Window" menu items always open a new one.
 5. New windows: `AppNewWindowProvider` (`Core/Infrastructure/Accessibility`)
    presses the app's own menu item through AX without activating the app
    (activation makes AeroSpace jump to the app's existing window);
@@ -202,12 +206,18 @@ OpenBoringBarTests/
    `AeroSpaceWorkspaceManager.focusNewWindow` then waits for the window, moves
    it to the target workspace if needed and focuses it. `BarManager` falls
    back to `activate(processID:)` when no item or no window is found.
+   A plain click passes `isExplicitRequest: false`, which limits the
+   Command-N fallback to document titles ("New", "New Document", "New File")
+   so it cannot create notes, events or messages. `BarManager` allows one
+   new-window request per app at a time (`openingNewWindowProcessIDs`).
 
 ### Start Menu
 
 1. `StartMenuBuilder` (`Core/DisplayBar`) builds the menu at click time:
    frequently used apps, all apps and the Applications folder (the latter via
-   `FolderPeekMenuBuilder`), and workspace layout scripts.
+   `FolderPeekMenuBuilder`), the peek folders flagged `isInStartMenu`
+   (`FolderPeekManager.startMenuFolders`; the bar shows `barFolders`), and
+   workspace layout scripts.
 2. `AppUsageManager` (`Core/Bar`) counts app activations (called from
    `BarManager`'s activation observer) and saves them through
    `AppUsageStoring` under `OpenBoringBar.appUsage`; `AppUsageCalculator`

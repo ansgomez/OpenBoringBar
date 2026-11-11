@@ -1,6 +1,6 @@
 import Foundation
 
-/// A folder shown as a widget at the right of the bar.
+/// A folder shown as a widget at the right of the bar, or in the Start menu.
 struct PeekFolder: Codable, Hashable, Identifiable {
     var path: String
     var sortOrder: FolderSortOrder
@@ -13,6 +13,9 @@ struct PeekFolder: Codable, Hashable, Identifiable {
     var badgeSymbol: String? = nil
     /// Color of a symbol badge; `nil` uses the accent color.
     var badgeColor: FolderBadgeColor? = nil
+    /// `true`: listed in the Start menu, not on the bar. Optional: older
+    /// saves do not have it.
+    var isInStartMenu: Bool? = nil
 
     var id: String { path }
     var url: URL { URL(fileURLWithPath: path, isDirectory: true) }

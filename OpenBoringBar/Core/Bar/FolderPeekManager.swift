@@ -29,6 +29,11 @@ final class FolderPeekManager: ObservableObject {
         }
     }
 
+    /// Folders shown as widgets on the bar.
+    var barFolders: [PeekFolder] { folders.filter { $0.isInStartMenu != true } }
+    /// Folders listed in the Start menu.
+    var startMenuFolders: [PeekFolder] { folders.filter { $0.isInStartMenu == true } }
+
     static func defaultFolders() -> [PeekFolder] {
         let imported = FolderPeekImporter.importFolders()
         if !imported.isEmpty {
@@ -63,6 +68,11 @@ final class FolderPeekManager: ObservableObject {
 
     func setSortOrder(_ order: FolderSortOrder, for folder: PeekFolder) {
         update(folder) { $0.sortOrder = order }
+    }
+
+    /// Moves a folder between the bar and the Start menu.
+    func setInStartMenu(_ isInStartMenu: Bool, for folder: PeekFolder) {
+        update(folder) { $0.isInStartMenu = isInStartMenu ? true : nil }
     }
 
     /// `nil` restores the Finder icon.

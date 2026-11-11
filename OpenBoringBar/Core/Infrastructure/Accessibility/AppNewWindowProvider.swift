@@ -12,7 +12,9 @@ enum AppNewWindowProvider {
     private static let pressAction = "AXPress" as CFString
 
     /// `false` when the app has no usable menu item or cannot be reached.
-    static func openNewWindow(processID: pid_t) -> Bool {
+    /// `isExplicitRequest`: the user asked for a new window (not a plain pin
+    /// click), see `NewWindowMenuItemRule`.
+    static func openNewWindow(processID: pid_t, isExplicitRequest: Bool) -> Bool {
         guard AXIsProcessTrusted() else {
             return false
         }
@@ -28,7 +30,7 @@ enum AppNewWindowProvider {
             collectItems(under: menuBarItem, readsSubmenus: true, elements: &elements, infos: &infos)
         }
 
-        guard let index = NewWindowMenuItemRule.bestIndex(in: infos) else {
+        guard let index = NewWindowMenuItemRule.bestIndex(in: infos, isExplicitRequest: isExplicitRequest) else {
             return false
         }
         // An app that takes long to act on the item reports `cannotComplete`

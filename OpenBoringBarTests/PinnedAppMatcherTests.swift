@@ -53,6 +53,23 @@ final class PinnedAppMatcherTests: XCTestCase {
         XCTAssertFalse(PinnedAppMatcher.isRunning(pin, resolvedURL: nil, among: []))
     }
 
+    func testUnpinnedRunningAppsSkipsPinsAndDuplicates() {
+        let pins: [(pin: PinnedApp, resolvedURL: URL?)] = [
+            (PinnedApp(bundleIdentifier: "pinned", bundleURL: pathA), pathA)
+        ]
+        let running = [
+            RunningAppDescriptor(bundleIdentifier: "pinned", bundleURL: pathA, processID: 1),
+            RunningAppDescriptor(bundleIdentifier: "other", bundleURL: pathB, processID: 2),
+            RunningAppDescriptor(bundleIdentifier: "other", bundleURL: pathB, processID: 3),
+            RunningAppDescriptor(bundleIdentifier: "nobundle", bundleURL: nil, processID: 4)
+        ]
+        XCTAssertEqual(
+            PinnedAppMatcher.unpinnedRunningApps(among: running, pins: pins).map(\.processID),
+            [2]
+        )
+        XCTAssertEqual(PinnedAppMatcher.unpinnedRunningApps(among: running, pins: []).map(\.processID), [1, 2])
+    }
+
     func testRunningMatchReturnsTheProcess() {
         let pin = PinnedApp(bundleIdentifier: "x", bundleURL: pathA)
         let match = PinnedAppMatcher.runningMatch(pin, resolvedURL: pathA, among: [

@@ -21,6 +21,18 @@ final class NewWindowMenuItemRuleTests: XCTestCase {
         NewWindowMenuItemRule.bestIndex(in: items).map { items[$0].title }
     }
 
+    func testPlainClickDoesNotPressCommandNThatCreatesData() {
+        let notes = [item("New Note", key: "N"), item("New Folder", key: "N", modifiers: 1)]
+        XCTAssertNil(NewWindowMenuItemRule.bestIndex(in: notes, isExplicitRequest: false))
+        XCTAssertEqual(NewWindowMenuItemRule.bestIndex(in: notes, isExplicitRequest: true), 0)
+
+        let textMate = [item("New", key: "N"), item("Open…", key: "O")]
+        XCTAssertEqual(NewWindowMenuItemRule.bestIndex(in: textMate, isExplicitRequest: false), 0)
+
+        let finder = [item("New Finder Window", key: "N")]
+        XCTAssertEqual(NewWindowMenuItemRule.bestIndex(in: finder, isExplicitRequest: false), 0)
+    }
+
     func testPrefersExactNewWindowOverCommandN() {
         // VS Code: Command-N is a new file, New Window is Shift-Command-N.
         let items = [

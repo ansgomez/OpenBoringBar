@@ -21,6 +21,8 @@ final class BarManager: ObservableObject {
     private let appUsageManager: AppUsageManager
     private let workspaceNotificationCenter: NotificationCenter
 
+    /// Apps with a new-window request in flight (main thread only).
+    private var openingNewWindowProcessIDs = Set<pid_t>()
     private var displayObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol]
     private var pendingRefreshWorkItem: DispatchWorkItem?
@@ -237,7 +239,7 @@ final class BarManager: ObservableObject {
         }
         guard workspaceManager.isAvailable else {
             if forcesNewWindow {
-                openNewWindow(processID: processID, displayID: displayID)
+                openNewWindow(processID: processID, in: .empty, workspace: nil, isExplicitRequest: true)
             } else {
                 openApplication(bundleURL: url)
             }
@@ -255,7 +257,9 @@ final class BarManager: ObservableObject {
         case .focusWindow(let windowID):
             workspaceManager.focusWindow(windowID)
         case .openNewWindow(let workspace):
-            openNewWindow(processID: processID, in: state, workspace: workspace)
+            openNewWindow(processID: processID, in: state, workspace: workspace, isExplicitRequest: forcesNewWindow)
+        case .activate:
+            activate(processID: processID)
         }
     }
 
@@ -266,23 +270,39 @@ final class BarManager: ObservableObject {
         openNewWindow(
             processID: processID,
             in: state,
-            workspace: PinClickRule.targetWorkspace(in: state, screenNumber: Self.screenNumber(of: displayID))
+            workspace: PinClickRule.targetWorkspace(in: state, screenNumber: Self.screenNumber(of: displayID)),
+            isExplicitRequest: true
         )
     }
 
     /// Presses the app's New Window menu item, then has AeroSpace focus the
     /// window that appears (moving it to `workspace` if needed). Falls back
     /// to bringing the app forward when the app has no such menu item or no
-    /// window appears.
-    private func openNewWindow(processID: pid_t, in state: AeroSpaceState, workspace: String?) {
+    /// window appears. `isExplicitRequest` is false for a plain pin click,
+    /// which presses fewer kinds of menu item (`NewWindowMenuItemRule`).
+    /// Ignored while an earlier request for the same app is still running,
+    /// so a double click opens one window.
+    private func openNewWindow(
+        processID: pid_t,
+        in state: AeroSpaceState,
+        workspace: String?,
+        isExplicitRequest: Bool
+    ) {
+        guard openingNewWindowProcessIDs.insert(processID).inserted else {
+            return
+        }
         let knownWindowIDs = Set(state.windows.filter { $0.processID == processID }.map(\.id))
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let didPress = AppNewWindowProvider.openNewWindow(processID: processID)
+            let didPress = AppNewWindowProvider.openNewWindow(
+                processID: processID,
+                isExplicitRequest: isExplicitRequest
+            )
             DispatchQueue.main.async {
                 guard let self else {
                     return
                 }
                 guard didPress, let workspace, self.workspaceManager.isAvailable else {
+                    self.openingNewWindowProcessIDs.remove(processID)
                     self.activate(processID: processID)
                     return
                 }
@@ -291,6 +311,7 @@ final class BarManager: ObservableObject {
                     knownWindowIDs: knownWindowIDs,
                     onWorkspace: workspace
                 ) { [weak self] didFocus in
+                    self?.openingNewWindowProcessIDs.remove(processID)
                     if !didFocus {
                         self?.activate(processID: processID)
                     }
@@ -394,13 +415,20 @@ final class BarManager: ObservableObject {
     }
 
     private func attachPins(to states: [DisplayState]) -> [DisplayState] {
-        let runningApps = NSWorkspace.shared.runningApplications.map {
+        let ownProcessID = ProcessInfo.processInfo.processIdentifier
+        let applications = NSWorkspace.shared.runningApplications
+        let descriptor: (NSRunningApplication) -> RunningAppDescriptor = {
             RunningAppDescriptor(
                 bundleIdentifier: $0.bundleIdentifier,
                 bundleURL: $0.bundleURL,
                 processID: $0.processIdentifier
             )
         }
+        let runningApps = applications.map(descriptor)
+        // Apps the Dock would show: regular ones, in launch order.
+        let dockApps = applications
+            .filter { $0.activationPolicy == .regular && !$0.isTerminated && $0.processIdentifier != ownProcessID }
+            .map(descriptor)
 
         return states.map { state in
             var state = state
@@ -408,8 +436,27 @@ final class BarManager: ObservableObject {
             state.displayUUID = context.displayUUID
             state.isMainDisplay = context.isMainDisplay
             state.canEditPins = pinnedAppManager.canEditPins(isMainDisplay: context.isMainDisplay)
-            state.pinnedApps = pinnedAppManager
+            let pins = pinnedAppManager
                 .pins(forDisplayUUID: context.displayUUID, isMainDisplay: context.isMainDisplay)
+            // No pin strip on this bar (Main Display Only): no running apps either.
+            if state.canEditPins {
+                state.runningUnpinnedApps = PinnedAppMatcher.unpinnedRunningApps(
+                    among: dockApps,
+                    pins: pins.map { (pin: $0, resolvedURL: pinnedAppManager.resolvedURL(for: $0)) }
+                ).compactMap { running in
+                    guard let url = running.bundleURL else {
+                        return nil
+                    }
+                    return PinnedAppItem(
+                        pin: PinnedApp(bundleIdentifier: running.bundleIdentifier, bundleURL: url),
+                        resolvedURL: url,
+                        name: Self.displayName(ofApplicationAt: url),
+                        processID: running.processID,
+                        isPinned: false
+                    )
+                }
+            }
+            state.pinnedApps = pins
                 .compactMap { pin in
                     // Pins that cannot be found are kept but not drawn.
                     guard let url = pinnedAppManager.resolvedURL(for: pin) else {

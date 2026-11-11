@@ -22,8 +22,11 @@ enum PinClickRule {
         forcesNewWindow: Bool
     ) -> PinClickAction {
         let workspace = targetWorkspace(in: state, screenNumber: screenNumber)
-        guard !forcesNewWindow, let workspace else {
+        guard !forcesNewWindow else {
             return .openNewWindow(workspace: workspace)
+        }
+        guard let workspace else {
+            return .activate
         }
 
         let windowsHere = state.windows.filter {

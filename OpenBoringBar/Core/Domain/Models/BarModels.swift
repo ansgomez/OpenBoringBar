@@ -26,6 +26,8 @@ struct DisplayState: Identifiable {
     var isMainDisplay: Bool = false
     var canEditPins: Bool = true
     var pinnedApps: [PinnedAppItem] = []
+    /// Running apps that are not pinned on this bar, in launch order.
+    var runningUnpinnedApps: [PinnedAppItem] = []
     /// AeroSpace workspaces on this display; empty when the row is hidden.
     var workspaceGroups: [WorkspaceGroup] = []
     /// Workspace the row's "+" target moves windows to, if one is free.

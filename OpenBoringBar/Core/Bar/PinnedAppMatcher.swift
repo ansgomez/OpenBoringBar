@@ -21,6 +21,23 @@ enum PinnedAppMatcher {
         runningMatch(pin, resolvedURL: resolvedURL, among: runningApps) != nil
     }
 
+    /// The running apps that match none of the pins, in the given order.
+    /// Several instances of one app count once; apps without a bundle
+    /// location are left out.
+    static func unpinnedRunningApps(
+        among runningApps: [RunningAppDescriptor],
+        pins: [(pin: PinnedApp, resolvedURL: URL?)]
+    ) -> [RunningAppDescriptor] {
+        var seen = Set<String>()
+        return runningApps.filter { running in
+            guard let bundleURL = running.bundleURL,
+                  !pins.contains(where: { isRunning($0.pin, resolvedURL: $0.resolvedURL, among: [running]) }) else {
+                return false
+            }
+            return seen.insert(running.bundleIdentifier ?? bundleURL.standardizedFileURL.path).inserted
+        }
+    }
+
     /// The first running app that matches the pin (see `isRunning`).
     static func runningMatch(
         _ pin: PinnedApp,

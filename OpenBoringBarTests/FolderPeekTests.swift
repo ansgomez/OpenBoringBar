@@ -154,6 +154,25 @@ final class PeekFolderCustomizationTests: XCTestCase {
         XCTAssertNil(folders.first?.badgeSymbol)
     }
 
+    func testFolderMovesBetweenBarAndStartMenu() {
+        let defaults = UserDefaults(suiteName: "PeekFolderStartMenuTests")!
+        defaults.removePersistentDomain(forName: "PeekFolderStartMenuTests")
+        let storage = MemoryStorage([
+            PeekFolder(path: "/a", sortOrder: .name, keepsFoldersOnTop: true),
+            PeekFolder(path: "/b", sortOrder: .name, keepsFoldersOnTop: true)
+        ])
+        let manager = FolderPeekManager(storage: storage, defaults: defaults)
+        XCTAssertEqual(manager.barFolders.map(\.path), ["/a", "/b"])
+
+        manager.setInStartMenu(true, for: manager.folders[0])
+        XCTAssertEqual(manager.barFolders.map(\.path), ["/b"])
+        XCTAssertEqual(manager.startMenuFolders.map(\.path), ["/a"])
+        XCTAssertEqual(storage.saved?.first?.isInStartMenu, true)
+
+        manager.setInStartMenu(false, for: manager.folders[0])
+        XCTAssertTrue(manager.startMenuFolders.isEmpty)
+    }
+
     func testBadgeImageAndSymbolReplaceEachOther() {
         let defaults = UserDefaults(suiteName: "PeekFolderCustomizationTests")!
         defaults.removePersistentDomain(forName: "PeekFolderCustomizationTests")

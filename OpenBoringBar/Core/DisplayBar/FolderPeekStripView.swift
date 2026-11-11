@@ -1,9 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Folder widgets at the right of the bar, in rows like the pins. Click opens
-/// the folder's menu; right-click for Open in Finder, sort order, Remove and
-/// Add Folder…. Shows a single "+" when no folder is configured.
+/// Folder widgets at the right of the bar, with a divider before them. Click
+/// opens the folder's menu; right-click for Open in Finder, sort order, Move
+/// to Start Menu, Remove and Add Folder…. Shows a single "+" when no folder
+/// is configured, and nothing when every folder is in the Start menu.
 struct FolderPeekStripView: View {
     @ObservedObject var manager: FolderPeekManager
     let rowCount: Int
@@ -13,14 +14,19 @@ struct FolderPeekStripView: View {
     let onChooseImage: (String) -> String?
 
     var body: some View {
-        let folders = manager.folders
+        let folders = manager.barFolders
         let rows = max(1, rowCount)
         let perRow = max(1, (folders.count + rows - 1) / rows)
 
-        Group {
-            if folders.isEmpty {
+        HStack(spacing: 8) {
+            if manager.folders.isEmpty || !folders.isEmpty {
+                Divider()
+                    .padding(.vertical, 9)
+            }
+
+            if manager.folders.isEmpty {
                 addButton
-            } else {
+            } else if !folders.isEmpty {
                 VStack(alignment: .leading, spacing: BarLayoutConstants.pinRowSpacing) {
                     ForEach(0..<rows, id: \.self) { row in
                         HStack(spacing: BarLayoutConstants.pinSpacing) {
@@ -30,6 +36,7 @@ struct FolderPeekStripView: View {
                                     onOpenMenu: onOpenFolderMenu,
                                     onAddFolder: onAddFolder,
                                     onRemove: { manager.remove(folder) },
+                                    onMoveToStartMenu: { manager.setInStartMenu(true, for: folder) },
                                     onSetSortOrder: { manager.setSortOrder($0, for: folder) },
                                     onChooseIcon: {
                                         if let path = onChooseImage("Choose an icon for “\(folder.name)”") {
@@ -71,6 +78,7 @@ private struct FolderPeekIcon: View {
     let onOpenMenu: (PeekFolder) -> Void
     let onAddFolder: () -> Void
     let onRemove: () -> Void
+    let onMoveToStartMenu: () -> Void
     let onSetSortOrder: (FolderSortOrder) -> Void
     let onChooseIcon: () -> Void
     let onResetIcon: () -> Void
@@ -154,6 +162,7 @@ private struct FolderPeekIcon: View {
                 }
             }
             Divider()
+            Button("Move to Start Menu", action: onMoveToStartMenu)
             Button("Add Folder…", action: onAddFolder)
             Button("Remove “\(folder.name)”", action: onRemove)
         }

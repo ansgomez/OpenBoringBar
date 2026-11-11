@@ -18,11 +18,13 @@ final class StartMenuBuilder {
         frequent: [LaunchableApplicationItem],
         hiddenFrequentCount: Int,
         all: [LaunchableApplicationItem],
+        folders: [PeekFolder],
         layouts: [WorkspaceLayoutScript]?,
         onOpen: @escaping (URL) -> Void,
         onRunLayout: @escaping (WorkspaceLayoutScript) -> Void,
         onHideFrequent: @escaping (String) -> Void,
-        onRestoreHiddenFrequent: @escaping () -> Void
+        onRestoreHiddenFrequent: @escaping () -> Void,
+        onMoveFolderToBar: @escaping (PeekFolder) -> Void
     ) -> NSMenu {
         let menu = NSMenu(title: "Start")
         menu.autoenablesItems = false
@@ -35,6 +37,25 @@ final class StartMenuBuilder {
         }
         for app in frequent {
             menu.addItem(Self.item(for: app, onOpen: onOpen, onHide: onHideFrequent))
+        }
+        if !frequent.isEmpty {
+            // The dependable way to remove an app; the right-click on an
+            // item above is a shortcut that relies on the click's event.
+            let removeItem = NSMenuItem(title: "Remove from Frequently Used", action: nil, keyEquivalent: "")
+            let removeMenu = NSMenu(title: removeItem.title)
+            removeMenu.autoenablesItems = false
+            for app in frequent {
+                guard let identifier = app.bundleIdentifier else {
+                    continue
+                }
+                let item = ClosureMenuItem(title: app.name) { onHideFrequent(identifier) }
+                let icon = NSWorkspace.shared.icon(forFile: app.bundleURL.path)
+                icon.size = Self.iconSize
+                item.image = icon
+                removeMenu.addItem(item)
+            }
+            removeItem.submenu = removeMenu
+            menu.addItem(removeItem)
         }
         if hiddenFrequentCount > 0 {
             menu.addItem(
@@ -60,6 +81,23 @@ final class StartMenuBuilder {
         folderItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
         folderItem.submenu = folderMenuBuilder.menu(for: folder)
         menu.addItem(folderItem)
+
+        if !folders.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "Folders"))
+            for folder in folders {
+                let item = NSMenuItem(title: folder.name, action: nil, keyEquivalent: "")
+                let icon = FolderIconRenderer.shared.icon(for: folder).copy() as? NSImage
+                icon?.size = Self.iconSize
+                item.image = icon
+                item.toolTip = folder.path
+                let submenu = folderMenuBuilder.menu(for: folder)
+                submenu.addItem(.separator())
+                submenu.addItem(ClosureMenuItem(title: "Move “\(folder.name)” to the Bar") { onMoveFolderToBar(folder) })
+                item.submenu = submenu
+                menu.addItem(item)
+            }
+        }
 
         if let layouts {
             menu.addItem(.separator())

@@ -71,6 +71,7 @@ final class PinClickRuleTests: XCTestCase {
             windows: []
         )
         XCTAssertEqual(action(state, screen: nil), .openNewWindow(workspace: "A"))
-        XCTAssertEqual(action(.empty), .openNewWindow(workspace: nil))
+        XCTAssertEqual(action(.empty), .activate, "no state: a plain click must not open windows")
+        XCTAssertEqual(action(.empty, forcesNewWindow: true), .openNewWindow(workspace: nil))
     }
 }
