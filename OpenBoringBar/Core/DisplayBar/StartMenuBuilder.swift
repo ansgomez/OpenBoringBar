@@ -1,11 +1,12 @@
 import AppKit
 
-/// Builds the Start menu: the most used apps and the pinned ones, every
+/// Builds the Start menu: the apps the user added (Favorites), the most used
+/// apps and the pinned ones, every
 /// installed app (submenu), the Applications folder to browse (submenu), and
 /// the workspace layout scripts.
 /// Click opens an app; Option-click reveals it in Finder. Right-click (or
-/// Control-click) a "Frequently Used" app for a menu that can remove it from
-/// that list. Keep the builder
+/// Control-click) a Favorites or "Frequently Used" app for a menu that can
+/// remove it from that list. Keep the builder
 /// alive while its menu is open (it owns the submenu delegates).
 final class StartMenuBuilder {
     private static let iconSize = NSSize(width: 18, height: 18)
@@ -15,6 +16,7 @@ final class StartMenuBuilder {
     private var allApplicationsDelegate: AllApplicationsMenuDelegate?
 
     func menu(
+        favorites: [LaunchableApplicationItem],
         frequent: [LaunchableApplicationItem],
         hiddenFrequentCount: Int,
         all: [LaunchableApplicationItem],
@@ -22,6 +24,7 @@ final class StartMenuBuilder {
         layouts: [WorkspaceLayoutScript]?,
         onOpen: @escaping (URL) -> Void,
         onRunLayout: @escaping (WorkspaceLayoutScript) -> Void,
+        onRemoveFavorite: @escaping (String) -> Void,
         onHideFrequent: @escaping (String) -> Void,
         onRestoreHiddenFrequent: @escaping () -> Void,
         onMoveFolderToBar: @escaping (PeekFolder) -> Void,
@@ -30,6 +33,19 @@ final class StartMenuBuilder {
         let menu = NSMenu(title: "Start")
         menu.autoenablesItems = false
 
+        if !favorites.isEmpty {
+            let removeTitle = "Remove from Favorites"
+            menu.addItem(.sectionHeader(title: "Favorites"))
+            for app in favorites {
+                menu.addItem(Self.item(for: app, onOpen: onOpen, removeTitle: removeTitle, onRemove: onRemoveFavorite))
+            }
+            menu.addItem(.separator())
+        }
+
+        let removeFrequentTitle = "Remove from Frequently Used"
+        let restore: (title: String, handler: () -> Void)? = hiddenFrequentCount > 0
+            ? ("Restore Removed Apps (\(hiddenFrequentCount))", onRestoreHiddenFrequent)
+            : nil
         menu.addItem(.sectionHeader(title: "Frequently Used"))
         if frequent.isEmpty {
             let empty = NSMenuItem(title: "No apps used yet", action: nil, keyEquivalent: "")
@@ -37,28 +53,16 @@ final class StartMenuBuilder {
             menu.addItem(empty)
         }
         for app in frequent {
-            menu.addItem(Self.item(for: app, onOpen: onOpen, onHide: onHideFrequent))
+            menu.addItem(
+                Self.item(
+                    for: app, onOpen: onOpen, removeTitle: removeFrequentTitle, onRemove: onHideFrequent,
+                    restore: restore
+                )
+            )
         }
-        if !frequent.isEmpty {
-            // The dependable way to remove an app; the right-click on an
-            // item above is a shortcut that relies on the click's event.
-            let removeItem = NSMenuItem(title: "Remove from Frequently Used", action: nil, keyEquivalent: "")
-            let removeMenu = NSMenu(title: removeItem.title)
-            removeMenu.autoenablesItems = false
-            for app in frequent {
-                guard let identifier = app.bundleIdentifier else {
-                    continue
-                }
-                let item = ClosureMenuItem(title: app.name) { onHideFrequent(identifier) }
-                let icon = NSWorkspace.shared.icon(forFile: app.bundleURL.path)
-                icon.size = Self.iconSize
-                item.image = icon
-                removeMenu.addItem(item)
-            }
-            removeItem.submenu = removeMenu
-            menu.addItem(removeItem)
-        }
-        if hiddenFrequentCount > 0 {
+        // Normally reached from an item's right-click menu; shown here only
+        // when every app was removed and there is no item left to click.
+        if frequent.isEmpty, hiddenFrequentCount > 0 {
             menu.addItem(
                 ClosureMenuItem(title: "Restore Removed Apps (\(hiddenFrequentCount))", handler: onRestoreHiddenFrequent)
             )
@@ -123,14 +127,19 @@ final class StartMenuBuilder {
     fileprivate static func item(
         for app: LaunchableApplicationItem,
         onOpen: @escaping (URL) -> Void,
-        onHide: ((String) -> Void)? = nil
+        removeTitle: String = "",
+        onRemove: ((String) -> Void)? = nil,
+        restore: (title: String, handler: () -> Void)? = nil
     ) -> NSMenuItem {
         let url = app.bundleURL
         let item = ClosureMenuItem(title: app.name) {
-            if let onHide, let identifier = app.bundleIdentifier, isSecondaryClick(NSApp.currentEvent) {
+            if let onRemove, let identifier = app.bundleIdentifier, isSecondaryClick(NSApp.currentEvent) {
                 // The Start menu has closed by now; show the item's own menu.
                 DispatchQueue.main.async {
-                    itemMenu(for: app, identifier: identifier, onOpen: onOpen, onHide: onHide)
+                    itemMenu(
+                        for: app, identifier: identifier, removeTitle: removeTitle,
+                        onOpen: onOpen, onRemove: onRemove, restore: restore
+                    )
                         .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
                 }
             } else if NSEvent.modifierFlags.contains(.option) {
@@ -164,8 +173,10 @@ final class StartMenuBuilder {
     private static func itemMenu(
         for app: LaunchableApplicationItem,
         identifier: String,
+        removeTitle: String,
         onOpen: @escaping (URL) -> Void,
-        onHide: @escaping (String) -> Void
+        onRemove: @escaping (String) -> Void,
+        restore: (title: String, handler: () -> Void)?
     ) -> NSMenu {
         let url = app.bundleURL
         let menu = NSMenu(title: app.name)
@@ -175,7 +186,10 @@ final class StartMenuBuilder {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         })
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(title: "Remove from Frequently Used") { onHide(identifier) })
+        menu.addItem(ClosureMenuItem(title: removeTitle) { onRemove(identifier) })
+        if let restore {
+            menu.addItem(ClosureMenuItem(title: restore.title, handler: restore.handler))
+        }
         return menu
     }
 }

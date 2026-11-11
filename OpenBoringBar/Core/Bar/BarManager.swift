@@ -880,6 +880,37 @@ final class BarManager: ObservableObject {
         )
     }
 
+    /// Apps the user added to the Start menu ("Favorites"), in the order
+    /// added. Apps that are no longer installed are left out.
+    func favoriteApplications() -> [LaunchableApplicationItem] {
+        appUsageManager.favorites.compactMap { identifier in
+            if let installed = launchableApplications.first(where: { $0.bundleIdentifier == identifier }) {
+                return installed
+            }
+            // Not in the scanned folders: ask Launch Services.
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) else {
+                return nil
+            }
+            return LaunchableApplicationItem(
+                bundleURL: url,
+                name: Self.displayName(ofApplicationAt: url),
+                bundleIdentifier: identifier
+            )
+        }
+    }
+
+    func isStartMenuFavorite(bundleIdentifier: String) -> Bool {
+        appUsageManager.isFavorite(bundleIdentifier: bundleIdentifier)
+    }
+
+    func setStartMenuFavorite(_ isFavorite: Bool, bundleIdentifier: String) {
+        if isFavorite {
+            appUsageManager.addFavorite(bundleIdentifier: bundleIdentifier)
+        } else {
+            appUsageManager.removeFavorite(bundleIdentifier: bundleIdentifier)
+        }
+    }
+
     /// Apps removed from "Frequently Used" by the user.
     var hiddenFrequentApplicationCount: Int { appUsageManager.hiddenCount }
 

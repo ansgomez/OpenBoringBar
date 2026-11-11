@@ -50,14 +50,19 @@ Only while the permission setup window is shown does it have a Dock icon.
 
 The Apple-logo button at the far left of the bar opens a menu:
 
+- **Favorites**: apps you added yourself. Right-click an app's icon or pill
+  on the bar and choose **Add to Start Menu** (**Remove from Start Menu**
+  takes it out again). Favorites are listed in the order added and are not
+  repeated under Frequently Used. They can also be removed in the menu:
+  right-click one and choose **Remove from Favorites**.
 - **Frequently Used**: the 10 apps you use most, plus every app pinned on
   that bar, most used first. The bar counts each time an app comes to the
   front; a use counts half as much after 30 days, so the list follows your
   habits. On first launch the list starts from what Spotlight recorded for
   apps used in the last 30 days. Right-click (or Control-click) an app in
   this list and choose **Remove from Frequently Used** to keep it out for
-  good, or pick it in the **Remove from Frequently Used** submenu below the
-  list; **Restore Removed Apps** brings them all back.
+  good; **Restore Removed Apps** in that same right-click menu brings them
+  all back.
 - **All Applications**: every installed app by name (type to jump to a name).
 - **Applications Folder**: browse `/Applications`, subfolders as submenus,
   with **Open “Applications” in Finder** at the top.

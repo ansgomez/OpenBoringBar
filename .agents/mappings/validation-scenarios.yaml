@@ -81,6 +81,7 @@ validation_scenarios:
       - open_start_menu_and_verify_frequent_apps_include_all_pinned_ones
       - right_click_frequent_app_remove_it_then_restore_removed_apps
       - move_folder_widget_to_start_menu_and_back_to_bar
+      - right_click_app_icon_add_to_start_menu_verify_favorites_then_remove
       - launch_unpinned_app_verify_icon_after_pins_then_close_its_window_and_quit_it
       - open_app_from_all_applications_and_browse_applications_folder
       - on_empty_workspace_run_terminal_finder_preview_layout_and_verify_arrangement

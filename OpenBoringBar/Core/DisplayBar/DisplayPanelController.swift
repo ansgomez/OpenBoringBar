@@ -764,6 +764,7 @@ final class DisplayPanelController {
     private func showStartMenu(displayID: CGDirectDisplayID) {
         let builder = StartMenuBuilder()
         let menu = builder.menu(
+            favorites: barManager.favoriteApplications(),
             frequent: barManager.frequentApplications(on: displayID),
             hiddenFrequentCount: barManager.hiddenFrequentApplicationCount,
             all: barManager.launchableApplications,
@@ -774,6 +775,9 @@ final class DisplayPanelController {
             },
             onRunLayout: { [barManager] layout in
                 barManager.runWorkspaceLayout(layout, displayID: displayID)
+            },
+            onRemoveFavorite: { [barManager] bundleIdentifier in
+                barManager.setStartMenuFavorite(false, bundleIdentifier: bundleIdentifier)
             },
             onHideFrequent: { [barManager] bundleIdentifier in
                 barManager.hideFromFrequentApplications(bundleIdentifier: bundleIdentifier)
@@ -860,6 +864,10 @@ final class DisplayPanelController {
             )
             menu.addItem(pinItem)
         }
+        addStartMenuItem(
+            to: menu,
+            bundleIdentifier: NSRunningApplication(processIdentifier: processID)?.bundleIdentifier
+        )
 
         addQuitItem(to: menu, processID: processID)
         NSMenu.popUpContextMenu(menu, with: event, for: view)
@@ -906,6 +914,7 @@ final class DisplayPanelController {
         }
         unpinItem.image = NSImage(systemSymbolName: "pin.slash", accessibilityDescription: nil)
         menu.addItem(unpinItem)
+        addStartMenuItem(to: menu, bundleIdentifier: item.pin.bundleIdentifier)
 
         if let processID = item.processID {
             addQuitItem(to: menu, processID: processID)
@@ -977,6 +986,20 @@ final class DisplayPanelController {
         item.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: nil)
         menu.addItem(item)
         menu.addItem(.separator())
+    }
+
+    /// "Add to Start Menu" / "Remove from Start Menu" (the Favorites section).
+    /// Nothing for apps without a bundle identifier.
+    private func addStartMenuItem(to menu: NSMenu, bundleIdentifier: String?) {
+        guard let bundleIdentifier else {
+            return
+        }
+        let isFavorite = barManager.isStartMenuFavorite(bundleIdentifier: bundleIdentifier)
+        let item = ClosureMenuItem(title: isFavorite ? "Remove from Start Menu" : "Add to Start Menu") { [weak self] in
+            self?.barManager.setStartMenuFavorite(!isFavorite, bundleIdentifier: bundleIdentifier)
+        }
+        item.image = NSImage(systemSymbolName: isFavorite ? "star.slash" : "star", accessibilityDescription: nil)
+        menu.addItem(item)
     }
 
     private func addQuitItem(to menu: NSMenu, processID: pid_t) {

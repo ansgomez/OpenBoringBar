@@ -84,6 +84,34 @@ final class AppUsageTests: XCTestCase {
         XCTAssertEqual(withoutAlpha.map(\.name), ["Beta", "Delta"], "removed apps stay out even when pinned")
     }
 
+    func testFavoritesKeepOrderAreSavedAndLeaveFrequentList() {
+        let storage = FakeAppUsageStorage()
+        let manager = AppUsageManager(storage: storage, now: { self.now })
+        manager.recordUse(ofBundleIdentifier: "com.test.alpha")
+        manager.recordUse(ofBundleIdentifier: "com.test.beta")
+        manager.addFavorite(bundleIdentifier: "com.test.beta")
+        manager.addFavorite(bundleIdentifier: "com.test.gamma")
+        manager.addFavorite(bundleIdentifier: "com.test.beta")
+
+        let reloaded = AppUsageManager(storage: storage, now: { self.now })
+        XCTAssertEqual(reloaded.favorites, ["com.test.beta", "com.test.gamma"])
+        XCTAssertTrue(reloaded.isFavorite(bundleIdentifier: "com.test.gamma"))
+        let apps = [app("Alpha"), app("Beta")]
+        XCTAssertEqual(
+            reloaded.frequentApplications(
+                among: apps, alwaysIncludedBundleIdentifiers: ["com.test.beta"], limit: 5
+            ).map(\.name),
+            ["Alpha"],
+            "a favorite is not repeated under Frequently Used, even when pinned"
+        )
+
+        reloaded.removeFavorite(bundleIdentifier: "com.test.beta")
+        XCTAssertEqual(reloaded.favorites, ["com.test.gamma"])
+        XCTAssertEqual(
+            reloaded.frequentApplications(among: apps, alwaysIncludedBundleIdentifiers: [], limit: 5).count, 2
+        )
+    }
+
     func testManagerRemembersRemovedApps() {
         let storage = FakeAppUsageStorage()
         let manager = AppUsageManager(storage: storage, now: { self.now })

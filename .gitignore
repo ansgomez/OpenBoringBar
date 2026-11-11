@@ -8,3 +8,5 @@ OpenBoringBar.xcodeproj/
 *.xcodeproj/project.xcworkspace/
 *.xcodeproj/xcuserdata/
 .codex/
+.build.log
+review/

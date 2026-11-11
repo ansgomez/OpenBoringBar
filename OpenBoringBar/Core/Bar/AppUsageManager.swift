@@ -9,6 +9,8 @@ final class AppUsageManager {
     private var records: [String: AppUsageRecord]
     /// Apps the user removed from the list; they stay out however much used.
     private var hidden: Set<String>
+    /// Apps the user added to the Start menu, in the order added.
+    private(set) var favorites: [String]
     /// `true` until something was saved: the list can then be seeded once.
     private(set) var needsSeed: Bool
 
@@ -18,6 +20,7 @@ final class AppUsageManager {
         let snapshot = storage.load()
         self.records = snapshot?.records ?? [:]
         self.hidden = Set(snapshot?.hiddenBundleIdentifiers ?? [])
+        self.favorites = snapshot?.favoriteBundleIdentifiers ?? []
         self.needsSeed = snapshot == nil
     }
 
@@ -37,6 +40,26 @@ final class AppUsageManager {
 
     var hiddenCount: Int { hidden.count }
 
+    func isFavorite(bundleIdentifier: String) -> Bool {
+        favorites.contains(bundleIdentifier)
+    }
+
+    func addFavorite(bundleIdentifier: String) {
+        guard !favorites.contains(bundleIdentifier) else {
+            return
+        }
+        favorites.append(bundleIdentifier)
+        save()
+    }
+
+    func removeFavorite(bundleIdentifier: String) {
+        guard favorites.contains(bundleIdentifier) else {
+            return
+        }
+        favorites.removeAll { $0 == bundleIdentifier }
+        save()
+    }
+
     func hide(bundleIdentifier: String) {
         hidden.insert(bundleIdentifier)
         save()
@@ -48,7 +71,7 @@ final class AppUsageManager {
     }
 
     /// The `limit` most used apps plus the always-included ones (the pins),
-    /// without the hidden ones.
+    /// without the hidden ones and the favorites (listed on their own).
     func frequentApplications(
         among installed: [LaunchableApplicationItem],
         alwaysIncludedBundleIdentifiers: Set<String>,
@@ -57,7 +80,7 @@ final class AppUsageManager {
         AppUsageCalculator.frequentApplications(
             among: installed,
             records: records,
-            excludedBundleIdentifiers: hidden,
+            excludedBundleIdentifiers: hidden.union(favorites),
             alwaysIncludedBundleIdentifiers: alwaysIncludedBundleIdentifiers,
             limit: limit,
             now: now()
@@ -67,7 +90,11 @@ final class AppUsageManager {
     private func save() {
         needsSeed = false
         storage.save(
-            AppUsageSnapshot(records: records, hiddenBundleIdentifiers: hidden.isEmpty ? nil : hidden.sorted())
+            AppUsageSnapshot(
+                records: records,
+                hiddenBundleIdentifiers: hidden.isEmpty ? nil : hidden.sorted(),
+                favoriteBundleIdentifiers: favorites.isEmpty ? nil : favorites
+            )
         )
     }
 }

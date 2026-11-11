@@ -226,6 +226,10 @@ OpenBoringBarTests/
    used apps plus every pin of that bar, minus the apps the user removed
    (`AppUsageSnapshot.hiddenBundleIdentifiers`; right-click an item in the
    menu, handled in `StartMenuBuilder` by checking the click's event).
+   Favorites (`AppUsageSnapshot.favoriteBundleIdentifiers`, in the order
+   added) come from "Add to Start Menu" in the context menu of a pin, a
+   running icon or a pill; they are listed first and left out of the
+   frequent list.
 3. Workspace layouts: `WorkspaceLayoutProvider`
    (`Core/Infrastructure/Application`) lists and runs the executables in
    `~/.config/openboringbar/layouts`; the bar passes the workspace name as the
@@ -387,6 +391,31 @@ After every code change:
 2. Any user-visible behavior change must reflect in `README.md`.
 3. Any coding-rule/process change for contributors/agents must reflect in `AGENTS.md`.
 4. Do not leave docs stale after refactors.
+
+## Privacy (Strict)
+
+This repository is public. Nothing that identifies the owner's employer,
+machine or private setup may enter the tree or the history.
+
+1. Commit with the GitHub noreply address set in this repository's git config
+   (`git config user.email`). Never commit with a work, university or personal
+   address; check `git log -1 --format=%ae` before pushing.
+2. No employer, university, course or client names anywhere: code, tests,
+   docs, commit messages.
+3. Test fixtures and examples use made-up data. Do not paste captured window
+   titles, app lists, folder names or CLI output from a real machine without
+   replacing the titles and names.
+4. No real home-directory paths (`/Users/<name>/...`); use `~`, `/Users/me`
+   or a path built at run time.
+5. No signing identities, certificate hashes, team IDs, tokens or keys.
+   `scripts/install.sh` finds the signing identity at run time; keep it so.
+6. Do not commit logs, build output or review notes (`.build.log`, `review/`
+   and the build folders are ignored; keep them ignored).
+7. Personal configuration (AeroSpace config, private scripts, pinned apps,
+   folder lists) lives outside the repository. Examples in `scripts/layouts/`
+   must work for anyone.
+8. If something of this kind was committed, say so and ask before rewriting
+   history; a follow-up commit does not remove it from earlier commits.
 
 ## Forbidden Actions
 
