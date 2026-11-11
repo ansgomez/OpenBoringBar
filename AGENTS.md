@@ -255,6 +255,13 @@ OpenBoringBarTests/
    `SystemStatsWidgetsView` observes it directly, so samples redraw only the
    widgets, not the whole bar.
 
+### Background App
+
+`Info.plist` sets `LSUIElement`: no Dock icon, no menu bar, not in
+Command-Tab; Quit is in the bar's context menu. `OpenBoringBarApp` switches
+to a regular app (and activates) only while the permission setup window is
+shown, so that window can be found again.
+
 ### AeroSpace Integration
 
 1. `AeroSpaceClient` (`Core/Infrastructure/Application`) is the only code that
@@ -263,7 +270,8 @@ OpenBoringBarTests/
 2. `AeroSpaceWorkspaceManager` (`Core/Bar`) owns the current state, re-reads
    it off the main thread (coalesced; on app activation, AX window changes,
    after commands, and every 2 s), and saves the Show Workspaces setting under
-   `OpenBoringBar.showWorkspaces`.
+   `OpenBoringBar.showWorkspaces`. Empty reads (a failed CLI call) do not
+   replace a good state for 3 s (`AeroSpaceStateRetentionRule`, unit-tested).
 3. `BarManager` attaches `WorkspaceGroupBuilder` output to each
    `DisplayState`; `WorkspaceRowView` draws it inside the bar's single row
    (the panel is always `BarLayoutConstants.panelHeight` high). With Pills

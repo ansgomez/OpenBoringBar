@@ -783,6 +783,9 @@ final class DisplayPanelController {
             },
             onMoveFolderToBar: { [barManager] folder in
                 barManager.folderPeekManager.setInStartMenu(false, for: folder)
+            },
+            onRemoveFolder: { [barManager] folder in
+                barManager.folderPeekManager.remove(folder)
             }
         )
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)

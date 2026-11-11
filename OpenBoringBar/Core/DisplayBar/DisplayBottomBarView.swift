@@ -255,6 +255,8 @@ struct DisplayBottomBarView: View {
             )
         }
 
+        Button("Add Folder…", action: onAddFolder)
+
         Toggle(
             "Show Folders",
             isOn: Binding(
@@ -386,11 +388,17 @@ private struct DisplayBarPinnedStrip: View {
     }
 
     private var contentWidth: CGFloat {
-        let count = CGFloat(columnCount + runningApps.count)
-        let separator = pinnedApps.isEmpty || runningApps.isEmpty ? 0 : Self.runningSeparatorWidth
-        return count * BarLayoutConstants.pinHitAreaSize
-            + max(0, count - 1) * BarLayoutConstants.pinSpacing
-            + separator
+        // The row's parts: the pins block, the separator, each running icon.
+        var parts: [CGFloat] = []
+        if !pinnedApps.isEmpty {
+            let columns = CGFloat(columnCount)
+            parts.append(columns * BarLayoutConstants.pinHitAreaSize + (columns - 1) * BarLayoutConstants.pinSpacing)
+        }
+        if !pinnedApps.isEmpty, !runningApps.isEmpty {
+            parts.append(Self.runningSeparatorWidth)
+        }
+        parts += runningApps.map { _ in BarLayoutConstants.pinHitAreaSize }
+        return parts.reduce(0, +) + CGFloat(max(0, parts.count - 1)) * BarLayoutConstants.pinSpacing
     }
 
     private static let runningSeparatorWidth: CGFloat = 7
@@ -408,6 +416,7 @@ private struct DisplayBarPinnedStrip: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: BarLayoutConstants.pinSpacing) {
+            if !pinnedApps.isEmpty {
             VStack(alignment: .leading, spacing: BarLayoutConstants.pinRowSpacing) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(spacing: BarLayoutConstants.pinSpacing) {
@@ -422,6 +431,7 @@ private struct DisplayBarPinnedStrip: View {
                         }
                     }
                 }
+            }
             }
 
             if !pinnedApps.isEmpty, !runningApps.isEmpty {
@@ -439,6 +449,21 @@ private struct DisplayBarPinnedStrip: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(width: min(contentWidth, maxWidth))
+    }
+}
+
+/// App icons of the pin strip by bundle path, so a bar refresh does not ask
+/// the system for every icon again. Main thread only.
+private enum DisplayBarPinIconCache {
+    private static var iconByPath: [String: NSImage] = [:]
+
+    static func icon(forApplicationAt url: URL) -> NSImage {
+        if let cached = iconByPath[url.path] {
+            return cached
+        }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        iconByPath[url.path] = icon
+        return icon
     }
 }
 
@@ -467,7 +492,7 @@ private struct DisplayBarPinnedIcon: View {
     var body: some View {
         Button(action: { onOpen(item) }) {
             VStack(spacing: 1) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: item.resolvedURL.path))
+                Image(nsImage: DisplayBarPinIconCache.icon(forApplicationAt: item.resolvedURL))
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()

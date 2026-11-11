@@ -21,6 +21,25 @@ final class FolderPeekMenuBuilder {
         return menu
     }
 
+    /// Like `menu(for:)`, but the folder is only read when the menu opens
+    /// (for submenus of a larger menu). `footerItems` follow the contents.
+    func lazyMenu(for folder: PeekFolder, footerItems: [NSMenuItem]) -> NSMenu {
+        let menu = NSMenu(title: folder.name)
+        menu.autoenablesItems = false
+        let delegate = FolderSubmenuDelegate(
+            builder: self,
+            folderURL: folder.url,
+            title: folder.name,
+            sortOrder: folder.sortOrder,
+            foldersOnTop: folder.keepsFoldersOnTop,
+            footerItems: footerItems
+        )
+        submenuDelegates.append(delegate)
+        menu.delegate = delegate
+        menu.addItem(NSMenuItem(title: "…", action: nil, keyEquivalent: ""))
+        return menu
+    }
+
     fileprivate func fill(
         _ menu: NSMenu,
         folderURL: URL,
@@ -107,9 +126,18 @@ private final class FolderSubmenuDelegate: NSObject, NSMenuDelegate {
     private let title: String
     private let sortOrder: FolderSortOrder
     private let foldersOnTop: Bool
+    private let footerItems: [NSMenuItem]
     private var isFilled = false
 
-    init(builder: FolderPeekMenuBuilder, folderURL: URL, title: String, sortOrder: FolderSortOrder, foldersOnTop: Bool) {
+    init(
+        builder: FolderPeekMenuBuilder,
+        folderURL: URL,
+        title: String,
+        sortOrder: FolderSortOrder,
+        foldersOnTop: Bool,
+        footerItems: [NSMenuItem] = []
+    ) {
+        self.footerItems = footerItems
         self.builder = builder
         self.folderURL = folderURL
         self.title = title
@@ -123,5 +151,9 @@ private final class FolderSubmenuDelegate: NSObject, NSMenuDelegate {
         }
         isFilled = true
         builder.fill(menu, folderURL: folderURL, title: title, sortOrder: sortOrder, foldersOnTop: foldersOnTop)
+        if !footerItems.isEmpty {
+            menu.addItem(.separator())
+            footerItems.forEach(menu.addItem)
+        }
     }
 }

@@ -24,7 +24,8 @@ final class StartMenuBuilder {
         onRunLayout: @escaping (WorkspaceLayoutScript) -> Void,
         onHideFrequent: @escaping (String) -> Void,
         onRestoreHiddenFrequent: @escaping () -> Void,
-        onMoveFolderToBar: @escaping (PeekFolder) -> Void
+        onMoveFolderToBar: @escaping (PeekFolder) -> Void,
+        onRemoveFolder: @escaping (PeekFolder) -> Void
     ) -> NSMenu {
         let menu = NSMenu(title: "Start")
         menu.autoenablesItems = false
@@ -91,10 +92,11 @@ final class StartMenuBuilder {
                 icon?.size = Self.iconSize
                 item.image = icon
                 item.toolTip = folder.path
-                let submenu = folderMenuBuilder.menu(for: folder)
-                submenu.addItem(.separator())
-                submenu.addItem(ClosureMenuItem(title: "Move “\(folder.name)” to the Bar") { onMoveFolderToBar(folder) })
-                item.submenu = submenu
+                // Read when it opens, so the Start menu itself opens at once.
+                item.submenu = folderMenuBuilder.lazyMenu(for: folder, footerItems: [
+                    ClosureMenuItem(title: "Move “\(folder.name)” to the Bar") { onMoveFolderToBar(folder) },
+                    ClosureMenuItem(title: "Remove “\(folder.name)”") { onRemoveFolder(folder) }
+                ])
                 menu.addItem(item)
             }
         }

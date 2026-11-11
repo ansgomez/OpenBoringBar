@@ -227,7 +227,8 @@ final class BarManager: ObservableObject {
         displayID: CGDirectDisplayID,
         forcesNewWindow: Bool = false
     ) {
-        guard let url = pinnedAppManager.resolvedURL(for: item.pin) else {
+        // A running app that is not pinned needs no lookup: its location is known.
+        guard let url = item.isPinned ? pinnedAppManager.resolvedURL(for: item.pin) : item.resolvedURL else {
             NSLog("OpenBoringBar: pinned app not found: \(item.pin.bundleIdentifier ?? item.pin.bundleURL.path)")
             NSSound.beep()
             scheduleDisplayRefresh()
@@ -421,7 +422,8 @@ final class BarManager: ObservableObject {
             RunningAppDescriptor(
                 bundleIdentifier: $0.bundleIdentifier,
                 bundleURL: $0.bundleURL,
-                processID: $0.processIdentifier
+                processID: $0.processIdentifier,
+                name: $0.localizedName
             )
         }
         let runningApps = applications.map(descriptor)
@@ -436,13 +438,17 @@ final class BarManager: ObservableObject {
             state.displayUUID = context.displayUUID
             state.isMainDisplay = context.isMainDisplay
             state.canEditPins = pinnedAppManager.canEditPins(isMainDisplay: context.isMainDisplay)
-            let pins = pinnedAppManager
+            // Pins that cannot be found are kept but not drawn.
+            let pins: [(pin: PinnedApp, resolvedURL: URL)] = pinnedAppManager
                 .pins(forDisplayUUID: context.displayUUID, isMainDisplay: context.isMainDisplay)
+                .compactMap { pin in
+                    pinnedAppManager.resolvedURL(for: pin).map { (pin: pin, resolvedURL: $0) }
+                }
             // No pin strip on this bar (Main Display Only): no running apps either.
             if state.canEditPins {
                 state.runningUnpinnedApps = PinnedAppMatcher.unpinnedRunningApps(
                     among: dockApps,
-                    pins: pins.map { (pin: $0, resolvedURL: pinnedAppManager.resolvedURL(for: $0)) }
+                    pins: pins.map { (pin: $0.pin, resolvedURL: $0.resolvedURL) }
                 ).compactMap { running in
                     guard let url = running.bundleURL else {
                         return nil
@@ -450,36 +456,39 @@ final class BarManager: ObservableObject {
                     return PinnedAppItem(
                         pin: PinnedApp(bundleIdentifier: running.bundleIdentifier, bundleURL: url),
                         resolvedURL: url,
-                        name: Self.displayName(ofApplicationAt: url),
+                        name: running.name ?? Self.displayName(ofApplicationAt: url),
                         processID: running.processID,
                         isPinned: false
                     )
                 }
             }
-            state.pinnedApps = pins
-                .compactMap { pin in
-                    // Pins that cannot be found are kept but not drawn.
-                    guard let url = pinnedAppManager.resolvedURL(for: pin) else {
-                        return nil
-                    }
-                    return PinnedAppItem(
-                        pin: pin,
+            state.pinnedApps = pins.map { pin, url in
+                PinnedAppItem(
+                    pin: pin,
+                    resolvedURL: url,
+                    name: Self.displayName(ofApplicationAt: url),
+                    processID: PinnedAppMatcher.runningMatch(
+                        pin,
                         resolvedURL: url,
-                        name: Self.displayName(ofApplicationAt: url),
-                        processID: PinnedAppMatcher.runningMatch(
-                            pin,
-                            resolvedURL: url,
-                            among: runningApps
-                        )?.processID
-                    )
-                }
+                        among: runningApps
+                    )?.processID
+                )
+            }
             return state
         }
     }
 
+    /// Display names by bundle path; read on every bar refresh (main thread).
+    private static var displayNameByPath: [String: String] = [:]
+
     private static func displayName(ofApplicationAt url: URL) -> String {
-        let name = FileManager.default.displayName(atPath: url.path)
-        return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
+        if let cached = displayNameByPath[url.path] {
+            return cached
+        }
+        let fileName = FileManager.default.displayName(atPath: url.path)
+        let name = fileName.hasSuffix(".app") ? String(fileName.dropLast(4)) : fileName
+        displayNameByPath[url.path] = name
+        return name
     }
 
     func quitApplication(processID: pid_t) {

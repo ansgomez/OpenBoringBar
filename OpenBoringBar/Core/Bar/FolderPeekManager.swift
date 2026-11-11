@@ -51,10 +51,14 @@ final class FolderPeekManager: ObservableObject {
         defaults.set(isEnabled, forKey: Self.isEnabledDefaultsKey)
     }
 
-    /// Adds a folder (name order, folders first) unless it is already listed.
+    /// Adds a folder to the bar (name order, folders first). A folder that
+    /// is already listed stays as it is, but comes back from the Start menu.
     func add(_ url: URL) {
         let path = url.standardizedFileURL.path
-        guard !folders.contains(where: { $0.path == path }) else {
+        if let existing = folders.first(where: { $0.path == path }) {
+            if existing.isInStartMenu == true {
+                setInStartMenu(false, for: existing)
+            }
             return
         }
         folders.append(PeekFolder(path: path, sortOrder: .name, keepsFoldersOnTop: true))

@@ -38,8 +38,8 @@ final class AeroSpaceWorkspaceManager {
     /// AeroSpace's list (for example when minimized), so it can be shown and
     /// restored on that workspace.
     private(set) var lastKnownWorkspaceByWindowID: [CGWindowID: String] = [:]
-    private static let emptyFetchesBeforeClearing = 3
-    private var emptyFetchCount = 0
+    /// Uptime of the last read that returned workspaces.
+    private var lastGoodFetch: TimeInterval = -.infinity
     private(set) var showsWorkspaces: Bool
     /// One pill per window of the visible workspace, instead of one per app.
     private(set) var pillsFollowWorkspace: Bool
@@ -150,16 +150,15 @@ final class AeroSpaceWorkspaceManager {
             let newState = self.client.fetchState()
             DispatchQueue.main.async {
                 self.isFetching = false
-                // A read that times out comes back empty. Keep the last
-                // state through a few of those, so the bar does not blink;
-                // AeroSpace really gone shows after a few polls.
-                if newState.workspaces.isEmpty, !self.state.workspaces.isEmpty {
-                    self.emptyFetchCount += 1
-                } else {
-                    self.emptyFetchCount = 0
+                let now = ProcessInfo.processInfo.systemUptime
+                if !newState.workspaces.isEmpty {
+                    self.lastGoodFetch = now
                 }
-                let isTransientFailure = self.emptyFetchCount > 0
-                    && self.emptyFetchCount < Self.emptyFetchesBeforeClearing
+                let isTransientFailure = AeroSpaceStateRetentionRule.keepsPreviousState(
+                    newStateIsEmpty: newState.workspaces.isEmpty,
+                    previousStateIsEmpty: self.state.workspaces.isEmpty,
+                    secondsSinceLastGoodRead: now - self.lastGoodFetch
+                )
                 if !isTransientFailure, newState != self.state {
                     self.state = newState
                     self.onStateChanged?()

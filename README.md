@@ -24,6 +24,7 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
 
 OpenBoringBar runs as a background app: it has no Dock icon, no menu bar and
 does not appear in Command-Tab. Quit it from the bar's right-click menu.
+Only while the permission setup window is shown does it have a Dock icon.
 
 - **Click a pill** to bring that app forward. If it is already in front,
   each click brings forward its next window on that display. Clicks never
@@ -62,7 +63,7 @@ The Apple-logo button at the far left of the bar opens a menu:
   with **Open “Applications” in Finder** at the top.
 - **Folders**: folders you moved here from the bar (right-click a folder
   widget, **Move to Start Menu**), each as a submenu of its contents. The last
-  item of a submenu moves the folder back to the bar.
+  items of a submenu move the folder back to the bar or remove it.
 - **Workspace Layouts** (with AeroSpace): see below.
 
 Click opens an app; Option-click reveals it in Finder.
@@ -123,7 +124,7 @@ Which workspaces exist when empty is up to AeroSpace: list them under
   dimmed and in italics; click it to restore the window there. Window menus
   list minimized windows too, marked "(minimized)".
 
-If AeroSpace stops answering, the groups stay for a few seconds, then go
+If AeroSpace stops answering, the groups stay for 3 seconds, then go
 away and the pills remain on their own.
 
 AeroSpace does not report changes, so the bar re-reads it when an app is
@@ -152,7 +153,8 @@ Menu**, **Add Folder…** and **Remove**.
 On first launch the list is imported, read-only, from the
 [Folder Peek](https://sindresorhus.com/folder-peek) app if it is installed
 (its folders, sort order and folders-on-top setting); otherwise it starts with
-`~/Downloads`, newest first. Toggle with **Show Folders** in the bar menu.
+`~/Downloads`, newest first. Toggle with **Show Folders** in the bar menu;
+**Add Folder…** is there too.
 
 ### System Stats
 

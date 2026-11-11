@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -27,7 +28,11 @@ struct OpenBoringBarApp: App {
                         }
                 }
             }
+            .onAppear {
+                Self.showInDock(permissionManager.shouldPresentSetup)
+            }
             .onChange(of: permissionManager.shouldPresentSetup) { _, shouldPresent in
+                Self.showInDock(shouldPresent)
                 if shouldPresent {
                     runtimeCoordinator.stopPanelsAndReset()
                 } else {
@@ -38,6 +43,19 @@ struct OpenBoringBarApp: App {
         }
         .defaultSize(width: width, height: setupMinHeight)
         .windowResizability(.contentSize)
+    }
+}
+
+extension OpenBoringBarApp {
+    /// The app is a background agent (`LSUIElement`). While the permission
+    /// setup window is shown it becomes a regular app and comes to the front,
+    /// so the window can be found again behind System Settings (Dock icon,
+    /// Command-Tab).
+    fileprivate static func showInDock(_ isShown: Bool) {
+        NSApp.setActivationPolicy(isShown ? .regular : .accessory)
+        if isShown {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 

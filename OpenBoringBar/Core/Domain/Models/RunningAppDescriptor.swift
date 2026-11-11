@@ -5,4 +5,5 @@ struct RunningAppDescriptor: Hashable {
     let bundleIdentifier: String?
     let bundleURL: URL?
     var processID: pid_t? = nil
+    var name: String? = nil
 }

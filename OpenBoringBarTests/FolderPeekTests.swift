@@ -171,6 +171,12 @@ final class PeekFolderCustomizationTests: XCTestCase {
 
         manager.setInStartMenu(false, for: manager.folders[0])
         XCTAssertTrue(manager.startMenuFolders.isEmpty)
+
+        // Adding a folder that sits in the Start menu brings it back to the bar.
+        manager.setInStartMenu(true, for: manager.folders[1])
+        manager.add(URL(fileURLWithPath: "/b"))
+        XCTAssertEqual(manager.folders.count, 2)
+        XCTAssertEqual(manager.barFolders.map(\.path), ["/a", "/b"])
     }
 
     func testBadgeImageAndSymbolReplaceEachOther() {
