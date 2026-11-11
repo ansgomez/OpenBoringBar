@@ -123,9 +123,12 @@ Which workspaces exist when empty is up to AeroSpace: list them under
   workspace on screen shows one pill per window, titled with the window title;
   tiled windows left to right, then floating ones. Only the focused window
   keeps its full pill: the others fold to their icon, and neighbouring folded
-  pills overlap in a diagonal stack. Move the pointer onto a folded pill to
-  unfold them all; they fold again when the pointer leaves the pills. The
-  focused window's pill does not unfold them. Turned off, every group
+  pills overlap in a diagonal stack. Rest the pointer on a folded pill for a
+  moment to unfold them all; they fold again when the pointer leaves the
+  pills. The focused window's pill does not unfold them. A folded pill
+  shows a red dot instead of its notification count. Nothing folds while no
+  window of that workspace is focused, so the bar of a display you are not
+  working on shows full pills. Turned off, every group
   shows icons and the per-app pills follow the groups. The focused window's pill
   is highlighted, and clicking a pill focuses that window. Drag a pill onto a
   workspace group (or **+**) to move that window there. Use the workspace
@@ -186,11 +189,11 @@ Pinned apps are icons at the left of the bar that stay after the app quits.
 The workspace groups and pills start to their right.
 
 - **Idle pins are stacked.** Pinned apps that are not running overlap in a
-  diagonal stack at the far left to save space (from two idle pins on). Move
-  the pointer over the stack and it unfolds to full-size icons; it folds
-  again when the pointer leaves. Pins of running apps stay at full size to
-  the right of the stack, so a pin moves out of the stack when its app
-  starts.
+  diagonal stack at the far left to save space (from two idle pins on). Rest
+  the pointer on the stack for a moment and it unfolds to full-size icons;
+  it folds again when the pointer leaves the pin strip. Pins of running apps
+  stay at full size to the right of the stack, so a pin moves out of the
+  stack when its app starts.
 - **Running apps that are not pinned** follow the pins after a thin
   divider, like in the Dock, in the order they were launched, whether or not
   they have a window. They leave when the app quits. Click works as for a
@@ -215,7 +218,9 @@ The workspace groups and pills start to their right.
   window.
 - If AeroSpace is not running, a click brings the app forward, like the Dock.
 - **Reorder**: right-click the icon, choose **Move Left**, **Move Right**,
-  **Move to Start**, or **Move to End**.
+  **Move to Start**, or **Move to End**. With a stack, a pin moves among the
+  icons drawn next to it: idle pins within the stack, running pins among the
+  running ones.
 - **Unpin**: right-click the icon, choose **Unpin**.
 - **Windows and Quit**: while the app runs, the icon's right-click menu also
   lists its windows from every workspace (minimized ones included) and offers

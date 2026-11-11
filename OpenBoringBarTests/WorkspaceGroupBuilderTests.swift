@@ -144,10 +144,9 @@ final class WorkspaceGroupBuilderTests: XCTestCase {
         let ids = WorkspaceGroupBuilder.minimizedGroupWindows(
             screenNumber: 1,
             minimized: windows,
-            listedWindowIDs: [3],
             screenNumberOf: { Int($0.frame.minX / 1000) }
         ).map(\.id)
-        XCTAssertEqual(ids, [1], "other screen and still-listed windows are left out")
+        XCTAssertEqual(ids, [1, 3], "windows of the other screen are left out")
     }
 
     func testMinimizedWindowStillListedByAeroSpaceIsSkipped() {

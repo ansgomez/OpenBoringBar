@@ -21,6 +21,15 @@ final class BarManager: ObservableObject {
     private let appUsageManager: AppUsageManager
     private let workspaceNotificationCenter: NotificationCenter
 
+    /// How long the bar trusts its own minimize or restore before what
+    /// Accessibility reports counts again.
+    private static let pendingWindowChangeLifetime: TimeInterval = 2
+    /// Windows the bar just minimized, shown in the "–" group until
+    /// Accessibility reports them (value: the entry and its expiry uptime).
+    private var pendingMinimizedWindows: [CGWindowID: (window: MinimizedWindow, expiry: TimeInterval)] = [:]
+    /// Windows the bar just restored, hidden from the "–" group until
+    /// Accessibility agrees (value: expiry uptime).
+    private var pendingRestoredWindowIDs: [CGWindowID: TimeInterval] = [:]
     /// Apps with a new-window request in flight (main thread only).
     private var openingNewWindowProcessIDs = Set<pid_t>()
     private var displayObserver: NSObjectProtocol?
@@ -368,8 +377,15 @@ final class BarManager: ObservableObject {
 
     /// Reorders a pin among the icons drawn on this bar.
     func movePin(_ item: PinnedAppItem, _ move: PinMove, displayID: CGDirectDisplayID) {
-        guard let visiblePins = displayStates.first(where: { $0.id == displayID })?.pinnedApps.map(\.pin),
-              let index = visiblePins.firstIndex(of: item.pin) else {
+        guard let drawnPins = displayStates.first(where: { $0.id == displayID })?.pinnedApps,
+              let drawnIndex = drawnPins.firstIndex(where: { $0.pin == item.pin }) else {
+            return
+        }
+        // Moves stay inside the pin's drawn group (the stack of idle pins,
+        // or the full-size pins), so every move changes what is drawn.
+        let group = FoldedStackLayout.moveGroup(isRunning: drawnPins.map(\.isRunning), index: drawnIndex)
+        let visiblePins = group.map { drawnPins[$0].pin }
+        guard let index = visiblePins.firstIndex(of: item.pin) else {
             return
         }
 
@@ -607,15 +623,43 @@ final class BarManager: ObservableObject {
         workspaceManager.focusWindow(windowID)
     }
 
-    /// Minimizes a window (a pill or icon dropped on the "–" group).
-    func minimizeAeroSpaceWindow(_ windowID: CGWindowID) {
+    /// Minimizes a window (a pill or icon dropped on the "–" group of the
+    /// given display). The bar shows it as minimized at once; macOS and
+    /// AeroSpace confirm a moment later.
+    func minimizeAeroSpaceWindow(_ windowID: CGWindowID, displayID: CGDirectDisplayID) {
+        if let window = workspaceManager.state.windows.first(where: { $0.id == windowID }),
+           let processID = window.processID {
+            pendingMinimizedWindows[windowID] = (
+                MinimizedWindow(
+                    id: windowID,
+                    processID: processID,
+                    appName: window.appName,
+                    title: window.title,
+                    frame: CGDisplayBounds(displayID)
+                ),
+                ProcessInfo.processInfo.systemUptime + Self.pendingWindowChangeLifetime
+            )
+        }
+        pendingRestoredWindowIDs[windowID] = nil
         workspaceManager.minimizeWindow(windowID)
+        scheduleDisplayRefresh()
     }
 
     /// Un-minimizes a window from the "–" group onto the workspace shown on
     /// the given display. AeroSpace adds a restored window to the focused
     /// workspace, so that workspace is focused first if it is not already.
     func restoreMinimizedWindow(processID: pid_t, windowID: CGWindowID, displayID: CGDirectDisplayID) {
+        // Leave the "–" group at once, and read AeroSpace soon after, so the
+        // pill does not wait for the next poll.
+        pendingMinimizedWindows[windowID] = nil
+        pendingRestoredWindowIDs[windowID] = ProcessInfo.processInfo.systemUptime + Self.pendingWindowChangeLifetime
+        scheduleDisplayRefresh()
+        for delay in [0.3, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.workspaceManager.refresh()
+            }
+        }
+
         let state = workspaceManager.state
         let target = PinClickRule.targetWorkspace(in: state, screenNumber: Self.screenNumber(of: displayID))
         guard let target, workspaceManager.isAvailable, target != state.focusedWorkspace else {
@@ -667,12 +711,29 @@ final class BarManager: ObservableObject {
         guard showsRow || followsWorkspace else {
             return states
         }
-        let aeroSpaceState = workspaceManager.state
+        var aeroSpaceState = workspaceManager.state
         let frameByWindowID = followsWorkspace ? Self.onScreenWindowFrames() : [:]
         let screens = NSScreen.screens
-        let minimizedWindows = followsWorkspace ? MinimizedWindowProvider.minimizedWindows() : []
+        var minimizedWindows = followsWorkspace ? MinimizedWindowProvider.minimizedWindows() : []
         let lastKnownWorkspace = workspaceManager.lastKnownWorkspaceByWindowID
         let listedWindowIDs = Set(aeroSpaceState.windows.map(\.id))
+        if followsWorkspace, showsRow {
+            // The "–" group follows Accessibility, which knows about a
+            // minimize at once, plus what the bar itself just did. AeroSpace
+            // lists a minimized window until its next read, so such windows
+            // are taken out of the workspaces here.
+            let now = ProcessInfo.processInfo.systemUptime
+            pendingMinimizedWindows = pendingMinimizedWindows.filter { $0.value.expiry > now }
+            pendingRestoredWindowIDs = pendingRestoredWindowIDs.filter { $0.value > now }
+            let reportedIDs = Set(minimizedWindows.map(\.id))
+            minimizedWindows += pendingMinimizedWindows.values
+                .map(\.window)
+                .filter { !reportedIDs.contains($0.id) }
+                .sorted { $0.id < $1.id }
+            minimizedWindows.removeAll { pendingRestoredWindowIDs[$0.id] != nil }
+            let minimizedIDs = Set(minimizedWindows.map(\.id))
+            aeroSpaceState.windows.removeAll { minimizedIDs.contains($0.id) }
+        }
         let screenBounds = screens.map { $0.displayID.map(CGDisplayBounds) ?? .null }
         let screenNumberOf: (MinimizedWindow) -> Int = { window in
             let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
@@ -709,7 +770,6 @@ final class BarManager: ObservableObject {
                     state.minimizedWindows = WorkspaceGroupBuilder.minimizedGroupWindows(
                         screenNumber: screenNumber,
                         minimized: minimizedWindows,
-                        listedWindowIDs: listedWindowIDs,
                         screenNumberOf: screenNumberOf
                     )
                 } else if let visible = aeroSpaceState.workspaces.first(where: {

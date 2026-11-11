@@ -3,6 +3,10 @@ import ApplicationServices
 
 /// Lists minimized windows of regular apps through the Accessibility API.
 enum MinimizedWindowProvider {
+    /// An app that does not answer is skipped after this long; the list is
+    /// read on every bar refresh, so one busy app must not hold up the bar.
+    private static let messagingTimeout: Float = 0.25
+
     static func minimizedWindows() -> [MinimizedWindow] {
         guard AXIsProcessTrusted() else {
             return []
@@ -15,6 +19,7 @@ enum MinimizedWindowProvider {
             }
             let processID = app.processIdentifier
             let appElement = AXUIElementCreateApplication(processID)
+            AXUIElementSetMessagingTimeout(appElement, messagingTimeout)
             guard let windows = AXElementInspector.windows(from: appElement) else {
                 continue
             }

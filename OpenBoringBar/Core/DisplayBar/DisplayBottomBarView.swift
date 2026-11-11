@@ -57,8 +57,6 @@ struct DisplayBottomBarView: View {
     let onRequestQuit: () -> Void
 
     @State private var isApplicationLauncherPresented = false
-    /// The pointer is over the pills: folded window pills are unfolded.
-    @State private var isPillStackExpanded = false
 
     private var isWorkspaceRowVisible: Bool {
         isAeroSpaceAvailable && showsWorkspaces
@@ -94,7 +92,6 @@ struct DisplayBottomBarView: View {
                     DisplayBarPinnedStrip(
                         pinnedApps: pinnedApps,
                         runningApps: runningUnpinnedApps,
-                        rowCount: 1,
                         maxWidth: pinStripMaxWidth,
                         onOpen: onOpenPinnedApp,
                         onShowMenu: onShowPinMenu
@@ -200,68 +197,19 @@ struct DisplayBottomBarView: View {
     }
 
     /// The pills. With `foldsIdle` (window pills of the workspace on screen)
-    /// only the focused window keeps its full pill: the others shrink to
-    /// their icon, and neighbours overlap in short diagonals like the idle
-    /// pins (`PinStackLayout`). Moving the pointer onto a folded pill unfolds
-    /// them all (the focused pill does not); they fold again when the pointer
-    /// leaves the pills. Nothing folds when no window of the workspace is
-    /// focused.
+    /// unfocused windows fold to icon chips, see `DisplayBarPillRow`.
     private func appPills(foldsIdle: Bool) -> some View {
-        let folded = foldsIdle && !isPillStackExpanded && apps.contains { $0.isFrontmost }
-        let stackPositions = PinStackLayout.runPositions(isFolded: apps.map { folded && !$0.isFrontmost })
-
-        return HStack(spacing: Self.pillSpacing) {
-            ForEach(Array(apps.enumerated()), id: \.element.id) { index, app in
-                let stackPosition = stackPositions[index]
-                DisplayBarAppPill(
-                    app: app,
-                    isCompact: stackPosition != nil,
-                    onSwitch: onSwitch,
-                    onHoverChanged: onAppHoverChanged
-                )
-                .overlay(
-                    DisplayBarPillRightClickCatcher { event, view in
-                        onShowAppMenu(app.processID, event, view)
-                    }
-                )
-                // A folded pill covers part of the folded one before it.
-                .padding(.leading, (stackPosition ?? 0) > 0 ? -Self.foldedPillOverlap : 0)
-                .offset(y: stackPosition.map { PinStackLayout.rise(position: $0, total: Self.foldedPillRise) } ?? 0)
-                .zIndex(Double(index))
-                .onHover { isHovering in
-                    // Only a folded pill unfolds the stack.
-                    guard isHovering, stackPosition != nil else {
-                        return
-                    }
-                    withAnimation(DisplayBottomBarAnimation.appListMutation) {
-                        isPillStackExpanded = true
-                    }
-                }
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.92)),
-                        removal: .opacity
-                    )
-                )
-            }
-        }
-        .onHover { isHovering in
-            // Leaving the pills folds them again; entering alone does not
-            // unfold (see the per-pill hover above).
-            guard foldsIdle, !isHovering, isPillStackExpanded else {
-                return
-            }
-            withAnimation(DisplayBottomBarAnimation.appListMutation) {
-                isPillStackExpanded = false
-            }
-        }
+        DisplayBarPillRow(
+            apps: apps,
+            foldsIdle: foldsIdle,
+            onSwitch: onSwitch,
+            onHoverChanged: onAppHoverChanged,
+            onShowAppMenu: onShowAppMenu
+        )
+        // A new row per workspace, so its unfolded state never carries over
+        // to another workspace's pills.
+        .id(workspaceGroups.first(where: \.isVisible)?.name)
     }
-
-    private static let pillSpacing: CGFloat = 5
-    /// How far a folded pill reaches over the folded pill before it.
-    private static let foldedPillOverlap: CGFloat = 22
-    /// Height difference within a diagonal of folded pills.
-    private static let foldedPillRise: CGFloat = 6
 
     @ViewBuilder
     private var barMenuItems: some View {
@@ -418,161 +366,234 @@ private struct DisplayBarStartButton: View {
     }
 }
 
-/// Pinned app icons at the left of the bar. As wide as its icons, up to
-/// `maxWidth`; scrolls sideways past that.
+/// The pills of one bar, side by side.
+///
+/// With `foldsIdle` only the focused window keeps its full pill: the others
+/// shrink to an icon chip, and neighbouring chips overlap in short diagonals
+/// (`FoldedStackLayout`). Resting the pointer on a chip unfolds them all (the
+/// focused pill does not); they fold again when the pointer leaves the row.
+/// Nothing folds when no window of the row is focused.
+private struct DisplayBarPillRow: View {
+    private static let spacing: CGFloat = 5
+
+    let apps: [RunningAppItem]
+    let foldsIdle: Bool
+    let onSwitch: (RunningAppItem) -> Void
+    let onHoverChanged: (pid_t?, CGRect?) -> Void
+    let onShowAppMenu: (pid_t, NSEvent, NSView) -> Void
+
+    @State private var isExpanded = false
+    @State private var unfoldTask: Task<Void, Never>?
+
+    var body: some View {
+        let folded = foldsIdle
+            ? FoldedStackLayout.foldedFlags(isFrontmost: apps.map(\.isFrontmost), isExpanded: isExpanded)
+            : apps.map { _ in false }
+        let positions = FoldedStackLayout.runPositions(isFolded: folded)
+
+        HStack(spacing: Self.spacing) {
+            ForEach(Array(apps.enumerated()), id: \.element.id) { index, app in
+                let position = positions[index]
+                DisplayBarAppPill(
+                    app: app,
+                    isCompact: position != nil,
+                    onSwitch: onSwitch,
+                    onHoverChanged: onHoverChanged
+                )
+                .overlay(
+                    DisplayBarPillRightClickCatcher { event, view in
+                        onShowAppMenu(app.processID, event, view)
+                    }
+                )
+                // Before the negative padding, so the whole chip reacts.
+                .onHover { isHovering in
+                    guard position != nil else {
+                        return
+                    }
+                    if isHovering {
+                        scheduleUnfold()
+                    } else {
+                        unfoldTask?.cancel()
+                    }
+                }
+                // A folded pill covers part of the folded one before it.
+                .padding(.leading, (position ?? 0) > 0 ? -FoldedStackLayout.pillOverlap : 0)
+                .offset(y: position.map { FoldedStackLayout.rise(position: $0, total: FoldedStackLayout.pillRise) } ?? 0)
+                .zIndex(Double(index))
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.92)),
+                        removal: .opacity
+                    )
+                )
+            }
+        }
+        // Focus moving to another window folds and unfolds pills too.
+        .animation(DisplayBottomBarAnimation.appListMutation, value: folded)
+        .onHover { isHovering in
+            if !isHovering {
+                fold()
+            }
+        }
+        .onDisappear(perform: fold)
+    }
+
+    private func scheduleUnfold() {
+        unfoldTask?.cancel()
+        unfoldTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(FoldedStackLayout.hoverIntentDelay * 1_000_000_000))
+            guard !Task.isCancelled else {
+                return
+            }
+            withAnimation(DisplayBottomBarAnimation.appListMutation) {
+                isExpanded = true
+            }
+        }
+    }
+
+    private func fold() {
+        unfoldTask?.cancel()
+        guard isExpanded else {
+            return
+        }
+        withAnimation(DisplayBottomBarAnimation.appListMutation) {
+            isExpanded = false
+        }
+    }
+}
+
+/// Pinned app icons at the left of the bar, in one row. As wide as its
+/// icons, up to `maxWidth`; scrolls sideways past that.
 ///
 /// Idle pins (apps that are not running) are folded into an overlapping
-/// diagonal stack at the far left (`PinStackLayout`); the stack unfolds while
-/// the pointer is over it. Running pins follow at full size, then the running
-/// apps that are not pinned.
+/// diagonal stack at the far left (`FoldedStackLayout`). Resting the pointer
+/// on the stack unfolds it; it folds again when the pointer leaves the
+/// strip. Running pins follow at full size, then the running apps that are
+/// not pinned.
 private struct DisplayBarPinnedStrip: View {
-    private typealias IndexedPin = (index: Int, item: PinnedAppItem)
+    private static let runningSeparatorWidth: CGFloat = 7
+    private static let stackAnimation = Animation.spring(response: 0.26, dampingFraction: 0.82)
 
     let pinnedApps: [PinnedAppItem]
     /// Running apps that are not pinned, drawn after the pins like in the Dock.
     let runningApps: [PinnedAppItem]
-    /// Rows for the pins outside the stack; they fill the rows in reading
-    /// order: top row left to right, then the next row.
-    let rowCount: Int
     let maxWidth: CGFloat
     let onOpen: (PinnedAppItem) -> Void
     let onShowMenu: (PinnedAppItem, Set<PinMove>, NSEvent, NSView) -> Void
 
     @State private var isStackExpanded = false
+    @State private var unfoldTask: Task<Void, Never>?
 
-    private static let runningSeparatorWidth: CGFloat = 7
-    private static let stackAnimation = Animation.spring(response: 0.26, dampingFraction: 0.82)
+    var body: some View {
+        let isRunning = pinnedApps.map(\.isRunning)
+        let stacked = FoldedStackLayout.stackedIndexes(isRunning: isRunning).map { pinnedApps[$0] }
+        let inline = FoldedStackLayout.inlineIndexes(isRunning: isRunning).map { pinnedApps[$0] }
+        let slot = BarLayoutConstants.pinHitAreaSize
+        let stackWidth = FoldedStackLayout.width(count: stacked.count, isExpanded: isStackExpanded, iconSlot: slot)
+        let hasSeparator = !pinnedApps.isEmpty && !runningApps.isEmpty
+        let contentWidth = stackWidth
+            + CGFloat(inline.count + runningApps.count) * slot
+            + (hasSeparator ? Self.runningSeparatorWidth : 0)
 
-    private var indexedPins: [IndexedPin] {
-        pinnedApps.enumerated().map { (index: $0.offset, item: $0.element) }
-    }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                if !stacked.isEmpty {
+                    ZStack(alignment: .leading) {
+                        ForEach(Array(stacked.enumerated()), id: \.element.id) { position, item in
+                            let offset = FoldedStackLayout.offset(
+                                index: position,
+                                isExpanded: isStackExpanded,
+                                iconSlot: slot
+                            )
+                            icon(for: item, position: position, groupCount: stacked.count)
+                                .offset(x: offset.width, y: offset.height)
+                                // Later icons lie on top, like the front of a pile.
+                                .zIndex(Double(position))
+                        }
+                    }
+                    .frame(width: stackWidth, alignment: .leading)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .onHover { isHovering in
+                        if isHovering {
+                            scheduleUnfold()
+                        } else {
+                            unfoldTask?.cancel()
+                        }
+                    }
+                }
 
-    /// Idle pins, when there are enough of them to stack.
-    private var stackedPins: [IndexedPin] {
-        let idle = indexedPins.filter { !$0.item.isRunning }
-        return PinStackLayout.isStacked(idleCount: idle.count) ? idle : []
-    }
+                ForEach(Array(inline.enumerated()), id: \.element.id) { position, item in
+                    icon(for: item, position: position, groupCount: inline.count)
+                }
 
-    /// The pins drawn at full size: all of them without a stack, else the
-    /// running ones.
-    private var inlinePins: [IndexedPin] {
-        stackedPins.isEmpty ? indexedPins : indexedPins.filter { $0.item.isRunning }
-    }
+                if hasSeparator {
+                    Divider()
+                        .padding(.vertical, 13)
+                        .frame(width: Self.runningSeparatorWidth)
+                }
 
-    private var columnCount: Int {
-        let rows = max(1, rowCount)
-        return (inlinePins.count + rows - 1) / rows
-    }
-
-    private var stackWidth: CGFloat {
-        PinStackLayout.width(
-            count: stackedPins.count,
-            isExpanded: isStackExpanded,
-            iconSlot: BarLayoutConstants.pinHitAreaSize
-        )
-    }
-
-    private var contentWidth: CGFloat {
-        // The row's parts: the stack, the pins block, the separator, each
-        // running icon.
-        var parts: [CGFloat] = []
-        if !stackedPins.isEmpty {
-            parts.append(stackWidth)
+                ForEach(runningApps) { item in
+                    // No moves: these are not pins.
+                    icon(for: item, position: 0, groupCount: 1)
+                }
+            }
+            .frame(maxHeight: .infinity)
         }
-        if !inlinePins.isEmpty {
-            let columns = CGFloat(columnCount)
-            parts.append(columns * BarLayoutConstants.pinHitAreaSize + (columns - 1) * BarLayoutConstants.pinSpacing)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: min(contentWidth, maxWidth))
+        // Folding only when the pointer leaves the whole strip keeps the
+        // running pins still while the pointer travels to them.
+        .onHover { isHovering in
+            if !isHovering {
+                fold()
+            }
         }
-        if !pinnedApps.isEmpty, !runningApps.isEmpty {
-            parts.append(Self.runningSeparatorWidth)
-        }
-        parts += runningApps.map { _ in BarLayoutConstants.pinHitAreaSize }
-        return parts.reduce(0, +) + CGFloat(max(0, parts.count - 1)) * BarLayoutConstants.pinSpacing
-    }
-
-    private var rows: [[IndexedPin]] {
-        let pins = inlinePins
-        guard columnCount > 0 else {
-            return []
-        }
-        return stride(from: 0, to: pins.count, by: columnCount).map {
-            Array(pins[$0..<min($0 + columnCount, pins.count)])
+        .onChange(of: stacked.isEmpty) { _, isEmpty in
+            if isEmpty {
+                fold()
+            }
         }
     }
 
-    private func icon(for entry: IndexedPin) -> some View {
+    /// `position` and `groupCount` are within the pin's drawn group (the
+    /// stack or the full-size pins): moves stay inside that group.
+    private func icon(for item: PinnedAppItem, position: Int, groupCount: Int) -> some View {
         DisplayBarPinnedIcon(
-            item: entry.item,
-            isFirst: entry.index == 0,
-            isLast: entry.index == pinnedApps.count - 1,
+            item: item,
+            isFirst: position == 0,
+            isLast: position == groupCount - 1,
             onOpen: onOpen,
             onShowMenu: onShowMenu
         )
     }
 
-    private var stack: some View {
-        ZStack(alignment: .leading) {
-            ForEach(Array(stackedPins.enumerated()), id: \.element.item.id) { position, entry in
-                let offset = PinStackLayout.offset(
-                    index: position,
-                    isExpanded: isStackExpanded,
-                    iconSlot: BarLayoutConstants.pinHitAreaSize
-                )
-                icon(for: entry)
-                    .offset(x: offset.width, y: offset.height)
-                    // Later icons lie on top, like the front of a pile.
-                    .zIndex(Double(position))
+    private func scheduleUnfold() {
+        unfoldTask?.cancel()
+        unfoldTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(FoldedStackLayout.hoverIntentDelay * 1_000_000_000))
+            guard !Task.isCancelled else {
+                return
             }
-        }
-        .frame(width: stackWidth, alignment: .leading)
-        .frame(maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .onHover { isHovering in
             withAnimation(Self.stackAnimation) {
-                isStackExpanded = isHovering
+                isStackExpanded = true
             }
         }
     }
 
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: BarLayoutConstants.pinSpacing) {
-            if !stackedPins.isEmpty {
-                stack
-            }
-
-            if !inlinePins.isEmpty {
-            VStack(alignment: .leading, spacing: BarLayoutConstants.pinRowSpacing) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: BarLayoutConstants.pinSpacing) {
-                        ForEach(row, id: \.item.id) { entry in
-                            icon(for: entry)
-                        }
-                    }
-                }
-            }
-            }
-
-            if !pinnedApps.isEmpty, !runningApps.isEmpty {
-                Divider()
-                    .padding(.vertical, 13)
-                    .frame(width: Self.runningSeparatorWidth)
-            }
-
-            ForEach(runningApps) { item in
-                // No moves: these are not pins.
-                DisplayBarPinnedIcon(item: item, isFirst: true, isLast: true, onOpen: onOpen, onShowMenu: onShowMenu)
-            }
-          }
-          .frame(maxHeight: .infinity)
+    private func fold() {
+        unfoldTask?.cancel()
+        guard isStackExpanded else {
+            return
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .frame(width: min(contentWidth, maxWidth))
+        withAnimation(Self.stackAnimation) {
+            isStackExpanded = false
+        }
     }
 }
 
-/// App icons of the pin strip by bundle path, so a bar refresh does not ask
-/// the system for every icon again. Main thread only.
+/// App icons of the pin strip and the pills by bundle path, so a bar refresh
+/// does not ask the system for every icon again. Main thread only.
 private enum DisplayBarPinIconCache {
     private static var iconByPath: [String: NSImage] = [:]
 
@@ -672,14 +693,14 @@ private struct DisplayBarAppPill: View {
                 DisplayBarAppIcon(processID: app.processID)
 
                 if !isCompact {
-                Text(app.name)
-                    .font(.system(size: 13, weight: .semibold))
-                    .italic(app.isMinimized)
-                    .foregroundStyle(app.isFrontmost ? Color.black : Color.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: Self.appNameMaxWidth, alignment: .leading)
-                    .contentTransition(.opacity)
+                    Text(app.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .italic(app.isMinimized)
+                        .foregroundStyle(app.isFrontmost ? Color.black : Color.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: Self.appNameMaxWidth, alignment: .leading)
+                        .contentTransition(.opacity)
                 }
 
                 if app.notificationBadgeCount > 0, !isCompact {
@@ -697,6 +718,15 @@ private struct DisplayBarAppPill: View {
             .padding(.horizontal, isCompact ? 5 : 8)
             .padding(.vertical, 6)
             .frame(alignment: .leading)
+            // A folded pill has no room for the count: a dot says "unread".
+            .overlay(alignment: .topTrailing) {
+                if isCompact, app.notificationBadgeCount > 0 {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 7, height: 7)
+                        .offset(x: 1, y: -1)
+                }
+            }
             // Minimized windows stay on their workspace, dimmed.
             .opacity(app.isMinimized ? 0.5 : 1)
             .background(
@@ -797,7 +827,11 @@ private struct DisplayBarAppIcon: View {
     let processID: pid_t
 
     private var appIcon: NSImage? {
-        NSRunningApplication(processIdentifier: processID)?.icon
+        guard let app = NSRunningApplication(processIdentifier: processID) else {
+            return nil
+        }
+        // Cached by bundle: the body re-runs on every bar refresh and hover.
+        return app.bundleURL.map(DisplayBarPinIconCache.icon(forApplicationAt:)) ?? app.icon
     }
 
     var body: some View {

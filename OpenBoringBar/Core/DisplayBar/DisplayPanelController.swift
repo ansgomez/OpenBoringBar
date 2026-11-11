@@ -280,7 +280,7 @@ final class DisplayPanelController {
                     )
                 },
                 onMinimizeWindow: { [barManager] windowID in
-                    barManager.minimizeAeroSpaceWindow(windowID)
+                    barManager.minimizeAeroSpaceWindow(windowID, displayID: displayID)
                 },
                 emptyWorkspaceTarget: emptyWorkspaceTarget,
                 onSwitchWorkspace: { [barManager] workspace in

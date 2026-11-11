@@ -192,12 +192,11 @@ OpenBoringBarTests/
    `AppEvent` cases.
 3. Pins are never deleted automatically; unresolved pins are kept and hidden.
    Idle pins (app not running) are drawn as a folded diagonal stack at the
-   far left that unfolds on hover; `PinStackLayout` (`Core/Bar`, pure,
-   unit-tested) holds the geometry, `DisplayBarPinnedStrip` draws it.
-   Window pills of the visible workspace fold the same way
-   (`DisplayBottomBarView.appPills(foldsIdle:)`): only the focused window
-   keeps its full pill, the others become icon chips until one of the
-   chips is hovered.
+   far left; `FoldedStackLayout` (`Core/Bar`, pure, unit-tested) holds the
+   rules and geometry, `DisplayBarPinnedStrip` draws it. Resting the
+   pointer on the stack (`hoverIntentDelay`) unfolds it; leaving the strip
+   folds it. Move Left/Right act within the pin's drawn group
+   (`FoldedStackLayout.moveGroup`, used by the view and `BarManager.movePin`).
    Running regular apps that match no pin of the bar follow the pins in the
    strip (`DisplayState.runningUnpinnedApps`, `PinnedAppItem.isPinned` false,
    chosen by `PinnedAppMatcher.unpinnedRunningApps`).
@@ -309,9 +308,20 @@ shown, so that window can be found again.
    (`DisplayState.minimizedWindows`,
    `WorkspaceGroupBuilder.minimizedGroupWindows`). The group is the bar's
    own; AeroSpace has no such workspace and cannot hold minimized windows.
+   The group follows Accessibility (which reports a minimize at once), not
+   AeroSpace's list, plus the bar's own pending minimizes and restores
+   (`BarManager.pendingMinimizedWindows`, `pendingRestoredWindowIDs`), so it
+   does not wait for the next AeroSpace read.
    A click restores onto the workspace shown on that bar; a drop on the
    group minimizes the window (`aerospace macos-native-minimize`).
-5. Off-screen windows: `OffScreenWindowRule` hides pills for apps whose
+5. Folded pills: with the groups shown, `DisplayBarPillRow` keeps the full
+   pill only for the focused window; the others are icon chips that overlap
+   (`FoldedStackLayout.foldedFlags`, `runPositions`). Resting the pointer on
+   a chip unfolds the row; leaving the row folds it. Nothing folds in a row
+   without a focused window (for example the bar of the display that does
+   not have focus). The row owns its unfolded state and is re-created per
+   workspace.
+6. Off-screen windows: `OffScreenWindowRule` hides pills for apps whose
    windows are all parked by AeroSpace; window cycling and the pill window
    menu deliberately ignore that rule.
 

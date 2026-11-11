@@ -103,14 +103,13 @@ enum WorkspaceGroupBuilder {
 
     /// Minimized windows for the "–" group of one screen: every minimized
     /// window whose last frame was on that screen, whatever workspace it came
-    /// from. Windows AeroSpace still lists are skipped.
+    /// from.
     static func minimizedGroupWindows(
         screenNumber: Int,
         minimized: [MinimizedWindow],
-        listedWindowIDs: Set<CGWindowID>,
         screenNumberOf: (MinimizedWindow) -> Int
     ) -> [MinimizedWindow] {
-        minimized.filter { !listedWindowIDs.contains($0.id) && screenNumberOf($0) == screenNumber }
+        minimized.filter { screenNumberOf($0) == screenNumber }
     }
 
     /// First empty, non-visible workspace on the screen: digits 1–9 first, then
