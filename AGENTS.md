@@ -40,7 +40,10 @@ Priority is reliability of core behavior before visual polish.
 ├── OpenBoringBarTests/
 ├── scripts/
 │   ├── bootstrap.sh
-│   └── generate_xcodeproj.rb
+│   ├── generate_xcodeproj.rb
+│   ├── install.sh
+│   ├── OpenBoringBar.entitlements
+│   └── layouts/
 ├── docs/
 ├── .agents/
 │   ├── AGENTS.md
@@ -79,6 +82,9 @@ Recommended read order:
 ```bash
 # Full bootstrap + build + unit tests (required after every code change)
 ./scripts/bootstrap.sh
+
+# Install the Debug build to ~/Applications with a stable signature, relaunch
+./scripts/install.sh
 
 # Regenerate Xcode project from source globs (only when needed)
 ruby scripts/generate_xcodeproj.rb
@@ -185,6 +191,59 @@ OpenBoringBarTests/
    each pin change. Pin traffic stays inside `Core/Bar`, so it adds no
    `AppEvent` cases.
 3. Pins are never deleted automatically; unresolved pins are kept and hidden.
+4. Pin click with AeroSpace never leaves the workspace shown on the clicked
+   bar: `PinClickRule` (`Core/Bar`, pure, unit-tested) returns a
+   `PinClickAction`, either focus the app's window there or open a new one.
+   Shift-click and the "New Window" menu items always open a new one.
+5. New windows: `AppNewWindowProvider` (`Core/Infrastructure/Accessibility`)
+   presses the app's own menu item through AX without activating the app
+   (activation makes AeroSpace jump to the app's existing window);
+   `NewWindowMenuItemRule` (`Core/Bar`, pure, unit-tested) picks the item.
+   `AeroSpaceWorkspaceManager.focusNewWindow` then waits for the window, moves
+   it to the target workspace if needed and focuses it. `BarManager` falls
+   back to `activate(processID:)` when no item or no window is found.
+
+### Start Menu
+
+1. `StartMenuBuilder` (`Core/DisplayBar`) builds the menu at click time:
+   frequently used apps, all apps and the Applications folder (the latter via
+   `FolderPeekMenuBuilder`), and workspace layout scripts.
+2. `AppUsageManager` (`Core/Bar`) counts app activations (called from
+   `BarManager`'s activation observer) and saves them through
+   `AppUsageStoring` under `OpenBoringBar.appUsage`; `AppUsageCalculator`
+   holds the decay and ranking math (pure, unit-tested). With nothing saved,
+   `SpotlightUsageProvider` seeds the records once. The list is the 10 most
+   used apps plus every pin of that bar, minus the apps the user removed
+   (`AppUsageSnapshot.hiddenBundleIdentifiers`; right-click an item in the
+   menu, handled in `StartMenuBuilder` by checking the click's event).
+3. Workspace layouts: `WorkspaceLayoutProvider`
+   (`Core/Infrastructure/Application`) lists and runs the executables in
+   `~/.config/openboringbar/layouts`; the bar passes the workspace name as the
+   argument. Layout logic lives in the scripts (`scripts/layouts/`), not in
+   the app. Scripts may send Apple Events, which is why `scripts/install.sh`
+   signs with `scripts/OpenBoringBar.entitlements` and `Info.plist` has
+   `NSAppleEventsUsageDescription`.
+
+### Folder Widgets
+
+1. `FolderPeekManager` (`Core/Bar`, `ObservableObject`) owns the folder list,
+   saved through `PeekFolderStoring` under `OpenBoringBar.peekFolders`, and the
+   Show Folders setting (`OpenBoringBar.showFolders`). With nothing saved, it
+   imports from Folder Peek via `FolderPeekImporter` (read-only) or falls back
+   to Downloads.
+2. `FolderPeekMenuBuilder` (`Core/DisplayBar`) builds the folder menu at click
+   time from `FolderContentsProvider` + `FolderEntrySorter`; subfolder menus
+   fill lazily. `ClosureMenuItem` is shared by all click-time menus.
+
+### System Stats Widgets
+
+1. `SystemStatsProvider` (`Core/Infrastructure/System`) reads CPU ticks,
+   VM statistics, the startup volume and IOKit power sources;
+   `SystemStatsCalculator` (`Core/Bar`) holds the pure math (unit-tested).
+2. `SystemStatsMonitor` (`Core/Bar`, `ObservableObject`) samples every 2 s off
+   the main thread while enabled (`OpenBoringBar.showSystemStats`).
+   `SystemStatsWidgetsView` observes it directly, so samples redraw only the
+   widgets, not the whole bar.
 
 ### AeroSpace Integration
 
@@ -196,14 +255,25 @@ OpenBoringBarTests/
    after commands, and every 2 s), and saves the Show Workspaces setting under
    `OpenBoringBar.showWorkspaces`.
 3. `BarManager` attaches `WorkspaceGroupBuilder` output to each
-   `DisplayState`; `WorkspaceRowView` draws it. The panel height grows by
-   `BarLayoutConstants.workspaceRowHeight` while the row is visible, and the
-   bottom guard gets the new height through `barDisplayHeightChanged`.
+   `DisplayState`; `WorkspaceRowView` draws it inside the bar's single row
+   (the panel is always `BarLayoutConstants.panelHeight` high). With Pills
+   Follow Workspace, the group of the visible workspace holds the window
+   pills in place of icons; otherwise the per-app pills follow the groups.
+   Groups are in keyboard order (1–9, 0, then other names) and include empty
+   workspaces only while Show Empty Workspaces
+   (`OpenBoringBar.showEmptyWorkspaces`, default off) is set; the "+" drop
+   target is only drawn when it is off.
 4. Pills Follow Workspace (`OpenBoringBar.pillsFollowWorkspace`, default on):
    `BarManager` replaces `DisplayState.apps` with one `RunningAppItem` per
    window of the visible workspace (`windowID` set), ordered by
    `WorkspaceGroupBuilder.visibleWorkspaceWindows`; pill clicks with a
-   `windowID` focus that window through AeroSpace.
+   `windowID` focus that window through AeroSpace. AeroSpace drops minimized
+   windows from every workspace, so `AeroSpaceWorkspaceManager` remembers each
+   window's last workspace (`lastKnownWorkspaceByWindowID`);
+   `MinimizedWindowProvider` (AX, window IDs via `_AXUIElementGetWindow`) lists
+   minimized windows and `WorkspaceGroupBuilder.minimizedWindows` places them as
+   dimmed pills (`isMinimized`). Restoring focuses the remembered workspace
+   first, because AeroSpace adds restored windows to the focused workspace.
 5. Off-screen windows: `OffScreenWindowRule` hides pills for apps whose
    windows are all parked by AeroSpace; window cycling and the pill window
    menu deliberately ignore that rule.
@@ -288,6 +358,8 @@ After every code change:
    - launcher open/search/launch
    - bottom guard behavior for frontmost window
    - pinned apps (pin, open, unpin, Show Pins On modes)
+   - pin click with AeroSpace (focus here, new window here, Shift-click)
+   - Start menu (frequent apps, all apps, Applications folder, a layout)
 
 ## Documentation Freshness Policy (Strict)
 

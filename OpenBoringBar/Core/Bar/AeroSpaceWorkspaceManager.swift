@@ -7,6 +7,7 @@ import Foundation
 final class AeroSpaceWorkspaceManager {
     private static let showsWorkspacesDefaultsKey = "OpenBoringBar.showWorkspaces"
     private static let pillsFollowWorkspaceDefaultsKey = "OpenBoringBar.pillsFollowWorkspace"
+    private static let showsEmptyWorkspacesDefaultsKey = "OpenBoringBar.showEmptyWorkspaces"
     static let pollInterval: TimeInterval = 2
     /// Wait after a command before re-reading, so AeroSpace has applied it.
     private static let postCommandRefreshDelay: TimeInterval = 0.15
@@ -14,6 +15,9 @@ final class AeroSpaceWorkspaceManager {
     /// changes) can fire many times per second, e.g. a terminal whose title
     /// animates; each fetch runs the CLI three times.
     static let throttledRefreshInterval: TimeInterval = 1
+    /// How long `focusNewWindow` waits for the window to show up.
+    private static let newWindowPollInterval: TimeInterval = 0.1
+    private static let newWindowPollCount = 20
 
     private let client: AeroSpaceControlling
     private let defaults: UserDefaults
@@ -27,16 +31,25 @@ final class AeroSpaceWorkspaceManager {
     /// Called on the main thread whenever `state` changes.
     var onStateChanged: (() -> Void)?
 
-    private(set) var state: AeroSpaceState = .empty
+    private(set) var state: AeroSpaceState = .empty {
+        didSet { lastKnownWorkspaceByWindowID.merge(state.workspaceByWindowID) { $1 } }
+    }
+    /// Last workspace each window was seen on. Kept after the window leaves
+    /// AeroSpace's list (for example when minimized), so it can be shown and
+    /// restored on that workspace.
+    private(set) var lastKnownWorkspaceByWindowID: [CGWindowID: String] = [:]
     private(set) var showsWorkspaces: Bool
     /// One pill per window of the visible workspace, instead of one per app.
     private(set) var pillsFollowWorkspace: Bool
+    /// The row also shows workspaces without windows.
+    private(set) var showsEmptyWorkspaces: Bool
 
     init(client: AeroSpaceControlling = AeroSpaceClient(), defaults: UserDefaults = .standard) {
         self.client = client
         self.defaults = defaults
         self.showsWorkspaces = defaults.object(forKey: Self.showsWorkspacesDefaultsKey) as? Bool ?? true
         self.pillsFollowWorkspace = defaults.object(forKey: Self.pillsFollowWorkspaceDefaultsKey) as? Bool ?? true
+        self.showsEmptyWorkspaces = defaults.object(forKey: Self.showsEmptyWorkspacesDefaultsKey) as? Bool ?? false
     }
 
     deinit {
@@ -60,6 +73,15 @@ final class AeroSpaceWorkspaceManager {
         }
         pillsFollowWorkspace = isEnabled
         defaults.set(isEnabled, forKey: Self.pillsFollowWorkspaceDefaultsKey)
+        onStateChanged?()
+    }
+
+    func setShowsEmptyWorkspaces(_ isEnabled: Bool) {
+        guard showsEmptyWorkspaces != isEnabled else {
+            return
+        }
+        showsEmptyWorkspaces = isEnabled
+        defaults.set(isEnabled, forKey: Self.showsEmptyWorkspacesDefaultsKey)
         onStateChanged?()
     }
 
@@ -140,7 +162,12 @@ final class AeroSpaceWorkspaceManager {
 
     /// Reads AeroSpace now, on the calling thread (used when a menu opens).
     func fetchStateNow() -> AeroSpaceState {
-        isAvailable ? client.fetchState() : .empty
+        guard isAvailable else {
+            return .empty
+        }
+        let fresh = client.fetchState()
+        lastKnownWorkspaceByWindowID.merge(fresh.workspaceByWindowID) { $1 }
+        return fresh
     }
 
     func moveWindow(_ windowID: CGWindowID, toWorkspace workspace: String) {
@@ -153,6 +180,46 @@ final class AeroSpaceWorkspaceManager {
 
     func switchToWorkspace(_ workspace: String) {
         perform { $0.switchToWorkspace(workspace) }
+    }
+
+    /// Waits (up to 2 s) for a window of the process that is not in
+    /// `knownWindowIDs`, moves it to `workspace` if AeroSpace put it elsewhere,
+    /// and focuses it. `completion` runs on the main thread with `false` when
+    /// no window appeared.
+    func focusNewWindow(
+        ofProcessID processID: pid_t,
+        knownWindowIDs: Set<CGWindowID>,
+        onWorkspace workspace: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard isAvailable else {
+            completion(false)
+            return
+        }
+        queue.async { [weak self] in
+            guard let self else {
+                return
+            }
+            var didFocus = false
+            for _ in 0..<Self.newWindowPollCount {
+                let newWindow = self.client.fetchState().windows.first {
+                    $0.processID == processID && !knownWindowIDs.contains($0.id)
+                }
+                if let newWindow {
+                    if newWindow.workspace != workspace {
+                        self.client.moveWindow(newWindow.id, toWorkspace: workspace)
+                    }
+                    self.client.focusWindow(newWindow.id)
+                    didFocus = true
+                    break
+                }
+                Thread.sleep(forTimeInterval: Self.newWindowPollInterval)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.postCommandRefreshDelay) {
+                completion(didFocus)
+                self.refresh()
+            }
+        }
     }
 
     private func perform(_ command: @escaping (AeroSpaceControlling) -> Void) {

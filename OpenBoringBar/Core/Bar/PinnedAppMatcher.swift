@@ -18,12 +18,21 @@ enum PinnedAppMatcher {
         resolvedURL: URL?,
         among runningApps: [RunningAppDescriptor]
     ) -> Bool {
+        runningMatch(pin, resolvedURL: resolvedURL, among: runningApps) != nil
+    }
+
+    /// The first running app that matches the pin (see `isRunning`).
+    static func runningMatch(
+        _ pin: PinnedApp,
+        resolvedURL: URL?,
+        among runningApps: [RunningAppDescriptor]
+    ) -> RunningAppDescriptor? {
         if let identifier = pin.bundleIdentifier {
-            return runningApps.contains { $0.bundleIdentifier == identifier }
+            return runningApps.first { $0.bundleIdentifier == identifier }
         }
 
         let candidateURLs = Set([pin.bundleURL, resolvedURL].compactMap { $0?.standardizedFileURL })
-        return runningApps.contains { running in
+        return runningApps.first { running in
             guard let runningURL = running.bundleURL?.standardizedFileURL else {
                 return false
             }

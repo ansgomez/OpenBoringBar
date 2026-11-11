@@ -20,6 +20,8 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Workspace layout scripts started from the bar ask other apps, such as Finder, to open windows.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

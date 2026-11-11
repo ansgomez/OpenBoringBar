@@ -1,39 +1,40 @@
 import AppKit
 import SwiftUI
 
-/// The bar's upper row: one group per AeroSpace workspace, each with an icon
-/// per window. Drag an icon onto another group (or "+") to move the window.
-struct WorkspaceRowView: View {
+/// One group per AeroSpace workspace, in the bar's single row. A group shows
+/// an icon per window; with `expandsVisibleWorkspace`, the workspace on screen
+/// shows `pills` (the window pills) instead. Drag an icon or pill onto another
+/// group (or "+") to move the window. The caller provides the scroll view.
+struct WorkspaceRowView<Pills: View>: View {
     let groups: [WorkspaceGroup]
     let emptyWorkspaceTarget: String?
+    let expandsVisibleWorkspace: Bool
     let onSwitchWorkspace: (String) -> Void
     let onFocusWindow: (CGWindowID) -> Void
     let onMoveWindow: (CGWindowID, String) -> Void
+    @ViewBuilder let pills: () -> Pills
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BarLayoutConstants.workspaceGroupSpacing) {
-                ForEach(groups) { group in
-                    WorkspaceGroupView(
-                        group: group,
-                        onSwitchWorkspace: onSwitchWorkspace,
-                        onFocusWindow: onFocusWindow,
-                        onMoveWindow: onMoveWindow
-                    )
-                }
-
-                if let emptyWorkspaceTarget {
-                    WorkspaceEmptyTargetView(
-                        workspace: emptyWorkspaceTarget,
-                        onMoveWindow: onMoveWindow
-                    )
-                }
+        HStack(spacing: BarLayoutConstants.workspaceGroupSpacing) {
+            ForEach(groups) { group in
+                WorkspaceGroupView(
+                    group: group,
+                    isExpanded: expandsVisibleWorkspace && group.isVisible,
+                    onSwitchWorkspace: onSwitchWorkspace,
+                    onFocusWindow: onFocusWindow,
+                    onMoveWindow: onMoveWindow,
+                    pills: pills
+                )
             }
-            // No leading inset: groups line up with the pills below.
-            .padding(.trailing, 8)
-            .frame(maxHeight: .infinity)
+
+            if let emptyWorkspaceTarget {
+                WorkspaceEmptyTargetView(
+                    workspace: emptyWorkspaceTarget,
+                    onMoveWindow: onMoveWindow
+                )
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: .infinity)
     }
 }
 
@@ -44,31 +45,40 @@ enum WorkspaceDragPayload {
     }
 }
 
-private struct WorkspaceGroupView: View {
+private struct WorkspaceGroupView<Pills: View>: View {
     let group: WorkspaceGroup
+    /// Show the window pills instead of icons (the workspace on screen).
+    let isExpanded: Bool
     let onSwitchWorkspace: (String) -> Void
     let onFocusWindow: (CGWindowID) -> Void
     let onMoveWindow: (CGWindowID, String) -> Void
+    @ViewBuilder let pills: () -> Pills
 
     @State private var isDropTargeted = false
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: isExpanded ? 5 : 3) {
             Text(group.name)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(group.isFocused ? Color.accentColor : Color.primary.opacity(group.isVisible ? 0.9 : 0.6))
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(nameColor)
                 .frame(minWidth: 12)
                 .padding(.trailing, 2)
-                .contentShape(Rectangle())
-                .onTapGesture { onSwitchWorkspace(group.name) }
-                .help("Go to workspace \(group.name)")
 
-            ForEach(group.windows) { window in
-                WorkspaceWindowIcon(window: window, onFocus: onFocusWindow)
+            if isExpanded {
+                pills()
+            } else {
+                ForEach(group.windows) { window in
+                    WorkspaceWindowIcon(window: window, onFocus: onFocusWindow)
+                }
             }
         }
-        .padding(.horizontal, 6)
-        .frame(height: BarLayoutConstants.workspaceGroupHeight)
+        .padding(.leading, 7)
+        .padding(.trailing, isExpanded ? 4 : 7)
+        .frame(
+            height: isExpanded
+                ? BarLayoutConstants.workspaceExpandedGroupHeight
+                : BarLayoutConstants.workspaceGroupHeight
+        )
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(backgroundColor)
@@ -77,6 +87,13 @@ private struct WorkspaceGroupView: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(Color.accentColor, lineWidth: isDropTargeted ? 1.5 : 0)
         )
+        // The whole group is the click and drop target, over the full row
+        // height: the name, the gaps and the padding all switch workspace.
+        // Icons keep their own tap (focus that window), which wins over this.
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { onSwitchWorkspace(group.name) }
+        .help("Go to workspace \(group.name)")
         .dropDestination(for: String.self) { items, _ in
             guard let windowID = WorkspaceDragPayload.windowID(from: items),
                   !group.windows.contains(where: { $0.id == windowID }) else {
@@ -87,9 +104,24 @@ private struct WorkspaceGroupView: View {
         } isTargeted: { isDropTargeted = $0 }
     }
 
+    /// Accent for the focused workspace; empty workspaces are the dimmest.
+    private var nameColor: Color {
+        if group.isFocused {
+            return Color.accentColor
+        }
+        if group.isVisible {
+            return Color.primary.opacity(0.9)
+        }
+        return Color.primary.opacity(group.windows.isEmpty ? 0.35 : 0.6)
+    }
+
     private var backgroundColor: Color {
         if isDropTargeted {
             return Color.accentColor.opacity(0.25)
+        }
+        if isExpanded {
+            // Fainter than a compact visible group, so the pills stand out.
+            return Color.white.opacity(0.12)
         }
         if group.isVisible {
             return Color.white.opacity(0.22)

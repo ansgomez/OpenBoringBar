@@ -10,10 +10,15 @@ final class BarManager: ObservableObject {
     private let installedApplicationProvider: InstalledApplicationProviding
     private let windowPreviewProvider: WindowPreviewProviding
     private let workspaceManager: AeroSpaceWorkspaceManager
+    /// Observed directly by the status widgets.
+    let systemStatsMonitor: SystemStatsMonitor
+    /// Observed directly by the folder widgets.
+    let folderPeekManager: FolderPeekManager
     private let dockNotificationBadgeProvider: DockNotificationBadgeProviding
     private let displayStateBuilder: BarDisplayStateBuilder
     private let accessibilityObserverManager: BarAccessibilityObserverManager
     private let pinnedAppManager: PinnedAppManager
+    private let appUsageManager: AppUsageManager
     private let workspaceNotificationCenter: NotificationCenter
 
     private var displayObserver: NSObjectProtocol?
@@ -33,13 +38,16 @@ final class BarManager: ObservableObject {
         installedApplicationProvider: InstalledApplicationProviding = InstalledApplicationProvider(),
         windowPreviewProvider: WindowPreviewProviding = WindowPreviewProvider(),
         workspaceManager: AeroSpaceWorkspaceManager = AeroSpaceWorkspaceManager(),
+        systemStatsMonitor: SystemStatsMonitor = SystemStatsMonitor(),
+        folderPeekManager: FolderPeekManager = FolderPeekManager(),
         dockNotificationBadgeProvider: DockNotificationBadgeProviding = DockNotificationBadgeProvider(),
         displayStateBuilder: BarDisplayStateBuilder = BarDisplayStateBuilder(),
         accessibilityObserverManager: BarAccessibilityObserverManager = BarAccessibilityObserverManager(),
         pinnedAppManager: PinnedAppManager = PinnedAppManager(
             storage: PinnedAppStorageProvider(),
             locator: ApplicationLocationProvider()
-        )
+        ),
+        appUsageManager: AppUsageManager = AppUsageManager(storage: AppUsageStorageProvider())
     ) {
         self.displayStates = []
         self.launchableApplications = []
@@ -47,10 +55,13 @@ final class BarManager: ObservableObject {
         self.installedApplicationProvider = installedApplicationProvider
         self.windowPreviewProvider = windowPreviewProvider
         self.workspaceManager = workspaceManager
+        self.systemStatsMonitor = systemStatsMonitor
+        self.folderPeekManager = folderPeekManager
         self.dockNotificationBadgeProvider = dockNotificationBadgeProvider
         self.displayStateBuilder = displayStateBuilder
         self.accessibilityObserverManager = accessibilityObserverManager
         self.pinnedAppManager = pinnedAppManager
+        self.appUsageManager = appUsageManager
         self.workspaceNotificationCenter = NSWorkspace.shared.notificationCenter
         self.workspaceObservers = []
         self.hidesOffScreenWindows = UserDefaults.standard.object(
@@ -204,17 +215,93 @@ final class BarManager: ObservableObject {
         scheduleDisplayRefresh()
     }
 
-    /// Pin click: always goes through `openApplication`, which launches the
-    /// app, or brings it forward and opens a window if it has none (like the
-    /// Dock). Never minimizes.
-    func openPinnedApp(_ item: PinnedAppItem) {
+    /// Pin click. Launches the app when it is not running. When it runs and
+    /// AeroSpace is in use, the click stays on the workspace shown on that
+    /// bar (`PinClickRule`): it focuses the app's window there, or opens a
+    /// new window there. `forcesNewWindow` (Shift-click) always opens one.
+    /// Without AeroSpace it brings the app forward, like the Dock.
+    func openPinnedApp(
+        _ item: PinnedAppItem,
+        displayID: CGDirectDisplayID,
+        forcesNewWindow: Bool = false
+    ) {
         guard let url = pinnedAppManager.resolvedURL(for: item.pin) else {
             NSLog("OpenBoringBar: pinned app not found: \(item.pin.bundleIdentifier ?? item.pin.bundleURL.path)")
             NSSound.beep()
             scheduleDisplayRefresh()
             return
         }
-        openApplication(bundleURL: url)
+        guard let processID = item.processID else {
+            openApplication(bundleURL: url)
+            return
+        }
+        guard workspaceManager.isAvailable else {
+            if forcesNewWindow {
+                openNewWindow(processID: processID, displayID: displayID)
+            } else {
+                openApplication(bundleURL: url)
+            }
+            return
+        }
+
+        let state = workspaceManager.fetchStateNow()
+        let action = PinClickRule.action(
+            in: state,
+            screenNumber: Self.screenNumber(of: displayID),
+            processID: processID,
+            forcesNewWindow: forcesNewWindow
+        )
+        switch action {
+        case .focusWindow(let windowID):
+            workspaceManager.focusWindow(windowID)
+        case .openNewWindow(let workspace):
+            openNewWindow(processID: processID, in: state, workspace: workspace)
+        }
+    }
+
+    /// Opens a new window of a running app on the workspace shown on the
+    /// given display, without going to the app's other windows.
+    func openNewWindow(processID: pid_t, displayID: CGDirectDisplayID) {
+        let state = workspaceManager.fetchStateNow()
+        openNewWindow(
+            processID: processID,
+            in: state,
+            workspace: PinClickRule.targetWorkspace(in: state, screenNumber: Self.screenNumber(of: displayID))
+        )
+    }
+
+    /// Presses the app's New Window menu item, then has AeroSpace focus the
+    /// window that appears (moving it to `workspace` if needed). Falls back
+    /// to bringing the app forward when the app has no such menu item or no
+    /// window appears.
+    private func openNewWindow(processID: pid_t, in state: AeroSpaceState, workspace: String?) {
+        let knownWindowIDs = Set(state.windows.filter { $0.processID == processID }.map(\.id))
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let didPress = AppNewWindowProvider.openNewWindow(processID: processID)
+            DispatchQueue.main.async {
+                guard let self else {
+                    return
+                }
+                guard didPress, let workspace, self.workspaceManager.isAvailable else {
+                    self.activate(processID: processID)
+                    return
+                }
+                self.workspaceManager.focusNewWindow(
+                    ofProcessID: processID,
+                    knownWindowIDs: knownWindowIDs,
+                    onWorkspace: workspace
+                ) { [weak self] didFocus in
+                    if !didFocus {
+                        self?.activate(processID: processID)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 1-based index into `NSScreen.screens`, as AeroSpace numbers monitors.
+    private static func screenNumber(of displayID: CGDirectDisplayID) -> Int? {
+        NSScreen.screens.firstIndex { $0.displayID == displayID }.map { $0 + 1 }
     }
 
     /// `nil` when the app cannot be pinned (no bundle) or this bar cannot
@@ -308,7 +395,11 @@ final class BarManager: ObservableObject {
 
     private func attachPins(to states: [DisplayState]) -> [DisplayState] {
         let runningApps = NSWorkspace.shared.runningApplications.map {
-            RunningAppDescriptor(bundleIdentifier: $0.bundleIdentifier, bundleURL: $0.bundleURL)
+            RunningAppDescriptor(
+                bundleIdentifier: $0.bundleIdentifier,
+                bundleURL: $0.bundleURL,
+                processID: $0.processIdentifier
+            )
         }
 
         return states.map { state in
@@ -328,7 +419,11 @@ final class BarManager: ObservableObject {
                         pin: pin,
                         resolvedURL: url,
                         name: Self.displayName(ofApplicationAt: url),
-                        isRunning: PinnedAppMatcher.isRunning(pin, resolvedURL: url, among: runningApps)
+                        processID: PinnedAppMatcher.runningMatch(
+                            pin,
+                            resolvedURL: url,
+                            among: runningApps
+                        )?.processID
                     )
                 }
             return state
@@ -386,12 +481,34 @@ final class BarManager: ObservableObject {
         windowPreviewProvider.windowTitles(for: processID, displayID: displayID)
     }
 
+    // MARK: System stats widgets
+
+    var showsSystemStats: Bool { systemStatsMonitor.isEnabled }
+
+    func setShowsSystemStats(_ isEnabled: Bool) {
+        systemStatsMonitor.setEnabled(isEnabled)
+        scheduleDisplayRefresh()
+    }
+
+    var showsFolders: Bool { folderPeekManager.isEnabled }
+
+    func setShowsFolders(_ isEnabled: Bool) {
+        folderPeekManager.setEnabled(isEnabled)
+        scheduleDisplayRefresh()
+    }
+
     // MARK: AeroSpace workspaces
 
     var isAeroSpaceAvailable: Bool { workspaceManager.isAvailable }
     var showsWorkspaces: Bool { workspaceManager.showsWorkspaces }
     var isWorkspaceRowVisible: Bool { workspaceManager.isRowVisible }
     var pillsFollowWorkspace: Bool { workspaceManager.pillsFollowWorkspace }
+
+    var showsEmptyWorkspaces: Bool { workspaceManager.showsEmptyWorkspaces }
+
+    func setShowsEmptyWorkspaces(_ isEnabled: Bool) {
+        workspaceManager.setShowsEmptyWorkspaces(isEnabled)
+    }
 
     func setPillsFollowWorkspace(_ isEnabled: Bool) {
         workspaceManager.setPillsFollowWorkspace(isEnabled)
@@ -434,6 +551,32 @@ final class BarManager: ObservableObject {
         workspaceManager.focusWindow(windowID)
     }
 
+    /// Minimized windows of one app, for its window menu.
+    func minimizedWindows(of processID: pid_t) -> [MinimizedWindow] {
+        MinimizedWindowProvider.minimizedWindows().filter { $0.processID == processID }
+    }
+
+    /// Workspace a window was last seen on, also after it was minimized.
+    func lastKnownWorkspace(of windowID: CGWindowID) -> String? {
+        workspaceManager.lastKnownWorkspaceByWindowID[windowID]
+    }
+
+    /// Un-minimizes a window on the workspace it was minimized from. AeroSpace
+    /// adds a restored window to the focused workspace, so that workspace is
+    /// focused first.
+    func restoreMinimizedWindow(processID: pid_t, windowID: CGWindowID) {
+        guard let workspace = lastKnownWorkspace(of: windowID),
+              workspaceManager.isAvailable,
+              workspace != workspaceManager.state.focusedWorkspace else {
+            activateWindow(processID: processID, windowID: windowID)
+            return
+        }
+        workspaceManager.switchToWorkspace(workspace)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.activateWindow(processID: processID, windowID: windowID)
+        }
+    }
+
     func switchToWorkspace(_ workspace: String) {
         workspaceManager.switchToWorkspace(workspace)
     }
@@ -450,6 +593,14 @@ final class BarManager: ObservableObject {
         let aeroSpaceState = workspaceManager.state
         let frameByWindowID = followsWorkspace ? Self.onScreenWindowFrames() : [:]
         let screens = NSScreen.screens
+        let minimizedWindows = followsWorkspace ? MinimizedWindowProvider.minimizedWindows() : []
+        let lastKnownWorkspace = workspaceManager.lastKnownWorkspaceByWindowID
+        let listedWindowIDs = Set(aeroSpaceState.windows.map(\.id))
+        let screenBounds = screens.map { $0.displayID.map(CGDisplayBounds) ?? .null }
+        let screenNumberOf: (MinimizedWindow) -> Int = { window in
+            let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
+            return (screenBounds.firstIndex { $0.contains(center) } ?? 0) + 1
+        }
         return states.map { state in
             var state = state
             guard let index = screens.firstIndex(where: { $0.displayID == state.id }) else {
@@ -474,13 +625,41 @@ final class BarManager: ObservableObject {
                         windowID: window.id
                     )
                 }
+
+                if let visible = aeroSpaceState.workspaces.first(where: {
+                    $0.screenNumber == screenNumber && $0.isVisible
+                }) {
+                    state.apps += WorkspaceGroupBuilder.minimizedWindows(
+                        onWorkspace: visible.name,
+                        screenNumber: screenNumber,
+                        minimized: minimizedWindows,
+                        lastKnownWorkspace: lastKnownWorkspace,
+                        listedWindowIDs: listedWindowIDs,
+                        screenNumberOf: screenNumberOf
+                    ).map { window in
+                        RunningAppItem(
+                            processID: window.processID,
+                            name: window.title.isEmpty ? window.appName : window.title,
+                            isFrontmost: false,
+                            notificationBadgeCount: max(0, badgeCountByProcessID[window.processID] ?? 0),
+                            windowID: window.id,
+                            isMinimized: true
+                        )
+                    }
+                }
             }
 
             guard showsRow else {
                 return state
             }
-            state.workspaceGroups = WorkspaceGroupBuilder.groups(from: aeroSpaceState, screenNumber: screenNumber)
-            state.emptyWorkspaceTarget = WorkspaceGroupBuilder.emptyWorkspaceTarget(
+            let showsEmpty = workspaceManager.showsEmptyWorkspaces
+            state.workspaceGroups = WorkspaceGroupBuilder.groups(
+                from: aeroSpaceState,
+                screenNumber: screenNumber,
+                includesEmpty: showsEmpty
+            )
+            // Empty groups are drop targets themselves, so "+" is not needed.
+            state.emptyWorkspaceTarget = showsEmpty ? nil : WorkspaceGroupBuilder.emptyWorkspaceTarget(
                 in: aeroSpaceState,
                 screenNumber: screenNumber
             )
@@ -514,7 +693,8 @@ final class BarManager: ObservableObject {
                 forName: NSWorkspace.didActivateApplicationNotification,
                 object: nil,
                 queue: .main
-            ) { [weak self] _ in
+            ) { [weak self] notification in
+                self?.recordUse(of: self?.runningApplication(from: notification))
                 self?.scheduleDisplayRefresh()
                 // Workspace switches almost always activate another app.
                 self?.workspaceManager.refresh()
@@ -624,6 +804,81 @@ final class BarManager: ObservableObject {
 
     private func refreshLaunchableApplications() {
         launchableApplications = installedApplicationProvider.fetchInstalledApplications()
+        seedAppUsageIfNeeded()
+    }
+
+    // MARK: Start menu
+
+    /// Apps for the Start menu's "Frequently Used" list on one bar: the most
+    /// used installed apps plus every app pinned on that bar, without the
+    /// ones the user removed from the list.
+    func frequentApplications(
+        on displayID: CGDirectDisplayID,
+        limit: Int = BarLayoutConstants.startMenuFrequentAppCount
+    ) -> [LaunchableApplicationItem] {
+        let pinned = displayStates.first { $0.id == displayID }?.pinnedApps ?? []
+        return appUsageManager.frequentApplications(
+            among: launchableApplications,
+            alwaysIncludedBundleIdentifiers: Set(pinned.compactMap(\.pin.bundleIdentifier)),
+            limit: limit
+        )
+    }
+
+    /// Apps removed from "Frequently Used" by the user.
+    var hiddenFrequentApplicationCount: Int { appUsageManager.hiddenCount }
+
+    func hideFromFrequentApplications(bundleIdentifier: String) {
+        appUsageManager.hide(bundleIdentifier: bundleIdentifier)
+    }
+
+    func restoreHiddenFrequentApplications() {
+        appUsageManager.unhideAll()
+    }
+
+    /// Layout scripts for the Start menu; none without AeroSpace.
+    func workspaceLayouts() -> [WorkspaceLayoutScript] {
+        workspaceManager.isAvailable ? WorkspaceLayoutProvider.layouts() : []
+    }
+
+    /// Runs a layout script for the workspace shown on the given display.
+    /// Beeps when the script fails.
+    func runWorkspaceLayout(_ layout: WorkspaceLayoutScript, displayID: CGDirectDisplayID) {
+        let workspace = PinClickRule.targetWorkspace(
+            in: workspaceManager.fetchStateNow(),
+            screenNumber: Self.screenNumber(of: displayID)
+        )
+        WorkspaceLayoutProvider.run(layout, workspace: workspace) { [weak self] succeeded in
+            if !succeeded {
+                NSSound.beep()
+            }
+            self?.workspaceManager.refresh()
+        }
+    }
+
+    /// Every activation counts as one use of the app.
+    private func recordUse(of app: NSRunningApplication?) {
+        guard let identifier = app?.bundleIdentifier, identifier != Bundle.main.bundleIdentifier else {
+            return
+        }
+        appUsageManager.recordUse(ofBundleIdentifier: identifier)
+    }
+
+    /// First run only: starts the list from what Spotlight knows, so it is
+    /// not empty until the bar has counted for a while.
+    private func seedAppUsageIfNeeded() {
+        guard appUsageManager.needsSeed else {
+            return
+        }
+        let applications = launchableApplications
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let seeds = SpotlightUsageProvider.seeds(for: applications)
+            DispatchQueue.main.async {
+                guard let self, self.appUsageManager.needsSeed else {
+                    return
+                }
+                self.appUsageManager.seed(seeds)
+            }
+        }
     }
 
     private func restoreFirstMinimizedWindowIfNoVisibleWindow(of processID: pid_t) -> Bool {

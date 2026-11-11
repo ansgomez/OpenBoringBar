@@ -1,0 +1,142 @@
+#!/bin/bash
+# Workspace layout: terminal on the left; on the right, Finder above Preview.
+#
+#   +-----------+-----------+
+#   |           |  Finder   |
+#   | Alacritty +-----------+
+#   |           |  Preview  |
+#   +-----------+-----------+
+#
+# Usage: terminal-finder-preview [workspace]
+#   workspace  AeroSpace workspace to build on (default: the focused one).
+#
+# Environment:
+#   PREVIEW_FILE  file Preview opens (default: a blank placeholder page,
+#                 because Preview has no window without a document).
+#   FINDER_DIR    folder the Finder window shows (default: home).
+#
+# Opens three NEW windows; windows already on the workspace are kept and end
+# up in the top-level row. Meant for an empty workspace. Works with bash 3.2.
+set -u
+
+here="$(cd "$(dirname "$0")" && pwd)"
+
+aerospace=""
+for candidate in /opt/homebrew/bin/aerospace /usr/local/bin/aerospace; do
+    [ -x "$candidate" ] && aerospace="$candidate" && break
+done
+[ -n "$aerospace" ] || { echo "aerospace CLI not found" >&2; exit 1; }
+
+workspace="${1:-$("$aerospace" list-workspaces --focused)}"
+[ -n "$workspace" ] || { echo "no workspace given and none focused" >&2; exit 1; }
+finder_dir="${FINDER_DIR:-$HOME}"
+
+# Tells ~/.config/aerospace/limit-two-windows to leave new windows alone
+# while this script places them (it would move the third one away).
+hold=/tmp/aerospace-layout.hold
+touch "$hold"
+trap 'sleep 0.5; rm -f "$hold"' EXIT
+
+window_ids_of() {  # bundle id -> its window ids, one per line
+    "$aerospace" list-windows --all --format '%{window-id} %{app-bundle-id}' \
+        | awk -v app="$1" '$2 == app { print $1 }'
+}
+
+# Runs the remaining arguments (a command that opens a window of the app
+# with the given bundle id), waits up to 6 s for the new window and prints
+# its id. Prints nothing when no window appeared.
+open_window() {
+    local bundle_id="$1"; shift
+    local before; before="$(window_ids_of "$bundle_id")"
+    "$@" >/dev/null 2>&1
+    local id
+    for _ in $(seq 1 60); do
+        touch "$hold"
+        for id in $(window_ids_of "$bundle_id"); do
+            if ! printf '%s\n' "$before" | grep -qx "$id"; then
+                echo "$id"
+                return 0
+            fi
+        done
+        sleep 0.1
+    done
+    return 1
+}
+
+new_terminal() {
+    local alacritty=/Applications/Alacritty.app/Contents/MacOS/alacritty
+    local socket
+    # A running Alacritty opens the window itself (one Dock icon); try its
+    # sockets newest first, since stale ones are left behind.
+    for socket in $(ls -t "${TMPDIR:-/tmp}"/Alacritty-*.sock 2>/dev/null); do
+        "$alacritty" msg -s "$socket" create-window --working-directory "$HOME" && return 0
+    done
+    open -na Alacritty
+}
+
+new_finder_window() {
+    # AppleScript makes a window without bringing Finder's other windows
+    # forward. It needs Automation permission; `open` is the fallback and
+    # goes to an existing window of that folder if there is one.
+    osascript -e 'on run argv' \
+              -e 'tell application "Finder" to make new Finder window to (POSIX file (item 1 of argv) as alias)' \
+              -e 'end run' "$finder_dir" \
+        || open -a Finder "$finder_dir"
+}
+
+new_preview_window() {
+    local file="${PREVIEW_FILE:-}"
+    if [ -z "$file" ] && [ -f "$here/placeholder.pdf" ]; then
+        # A fresh copy each time: Preview would otherwise go to the window
+        # that already shows the file.
+        file="${TMPDIR:-/tmp}/layout-preview-$(date +%s).pdf"
+        cp "$here/placeholder.pdf" "$file"
+    fi
+    if [ -n "$file" ]; then
+        open -a Preview "$file"
+    else
+        open -a Preview
+    fi
+}
+
+place() {  # window id -> onto the target workspace
+    "$aerospace" move-node-to-workspace --window-id "$1" "$workspace" >/dev/null 2>&1
+    "$aerospace" layout --window-id "$1" tiling >/dev/null 2>&1
+}
+
+terminal="$(open_window org.alacritty new_terminal)"
+finder="$(open_window com.apple.finder new_finder_window)"
+preview="$(open_window com.apple.Preview new_preview_window)"
+
+for id in "$terminal" "$finder" "$preview"; do
+    [ -n "$id" ] && place "$id"
+done
+
+# One flat row, then: terminal to the far left, Preview to the far right,
+# and Preview joined with its left neighbour (Finder) into a column.
+"$aerospace" flatten-workspace-tree --workspace "$workspace"
+[ -n "$terminal" ] && "$aerospace" layout --window-id "$terminal" h_tiles >/dev/null 2>&1
+shift_to_edge() {  # window id, direction
+    for _ in 1 2 3 4 5 6; do
+        "$aerospace" move --window-id "$1" --boundaries-action stop "$2" >/dev/null 2>&1 || break
+    done
+}
+[ -n "$terminal" ] && shift_to_edge "$terminal" left
+if [ -n "$finder" ] && [ -n "$preview" ]; then
+    shift_to_edge "$finder" right
+    shift_to_edge "$preview" right
+    "$aerospace" join-with --window-id "$preview" left
+    "$aerospace" layout --window-id "$preview" v_tiles >/dev/null 2>&1
+    "$aerospace" move --window-id "$finder" --boundaries-action stop up >/dev/null 2>&1
+fi
+
+[ -n "$terminal" ] && "$aerospace" focus --window-id "$terminal"
+
+missing=""
+[ -n "$terminal" ] || missing="$missing Alacritty"
+[ -n "$finder" ] || missing="$missing Finder"
+[ -n "$preview" ] || missing="$missing Preview"
+if [ -n "$missing" ]; then
+    echo "no new window appeared for:$missing" >&2
+    exit 2
+fi

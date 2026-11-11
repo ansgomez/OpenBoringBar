@@ -20,6 +20,16 @@ struct DisplayBottomBarView: View {
     let isAeroSpaceAvailable: Bool
     let showsWorkspaces: Bool
     let pillsFollowWorkspace: Bool
+    let showsEmptyWorkspaces: Bool
+    let systemStatsMonitor: SystemStatsMonitor
+    let showsSystemStats: Bool
+    let onShowsSystemStatsToggled: (Bool) -> Void
+    let folderPeekManager: FolderPeekManager
+    let showsFolders: Bool
+    let onShowsFoldersToggled: (Bool) -> Void
+    let onOpenFolderMenu: (PeekFolder) -> Void
+    let onAddFolder: () -> Void
+    let onChooseImage: (String) -> String?
     let workspaceGroups: [WorkspaceGroup]
     let emptyWorkspaceTarget: String?
     let onSwitchWorkspace: (String) -> Void
@@ -27,9 +37,11 @@ struct DisplayBottomBarView: View {
     let onMoveWindowToWorkspace: (CGWindowID, String) -> Void
     let onShowsWorkspacesToggled: (Bool) -> Void
     let onPillsFollowWorkspaceToggled: (Bool) -> Void
+    let onShowsEmptyWorkspacesToggled: (Bool) -> Void
+    let onShowStartMenu: () -> Void
     let onOpenPinnedApp: (PinnedAppItem) -> Void
-    let onUnpinPinnedApp: (PinnedAppItem) -> Void
-    let onMovePinnedApp: (PinnedAppItem, PinMove) -> Void
+    /// Pin right-click: the item, the moves it allows, the event and view.
+    let onShowPinMenu: (PinnedAppItem, Set<PinMove>, NSEvent, NSView) -> Void
     let onPinDisplayModeChanged: (PinDisplayMode) -> Void
     let onSwitch: (RunningAppItem) -> Void
     let onShowAppMenu: (pid_t, NSEvent, NSView) -> Void
@@ -60,89 +72,100 @@ struct DisplayBottomBarView: View {
                 )
 
             HStack(spacing: 8) {
-// Pseudo-requirement: users can already open the app they want with Command + Space, so we shouldn’t blindly copy BoringBar wholesale.
-//                applicationLauncherButton
-//
-//                Divider()
-//                    .padding(.vertical, 9)
+                DisplayBarStartButton(onShowMenu: onShowStartMenu)
 
-                // Pins span the full bar height, left of both rows.
+                Divider()
+                    .padding(.vertical, 9)
+
                 if !pinnedApps.isEmpty {
                     DisplayBarPinnedStrip(
                         pinnedApps: pinnedApps,
-                        rowCount: isWorkspaceRowVisible ? 2 : 1,
+                        rowCount: 1,
                         maxWidth: pinStripMaxWidth,
                         onOpen: onOpenPinnedApp,
-                        onUnpin: onUnpinPinnedApp,
-                        onMove: onMovePinnedApp
+                        onShowMenu: onShowPinMenu
                     )
 
                     Divider()
                         .padding(.vertical, 9)
                 }
 
-                VStack(spacing: 0) {
+                Group {
                     if isWorkspaceRowVisible {
-                        WorkspaceRowView(
-                            groups: workspaceGroups,
-                            emptyWorkspaceTarget: emptyWorkspaceTarget,
-                            onSwitchWorkspace: onSwitchWorkspace,
-                            onFocusWindow: onFocusWorkspaceWindow,
-                            onMoveWindow: onMoveWindowToWorkspace
-                        )
-                        .frame(height: BarLayoutConstants.workspaceRowHeight)
-
-                        Divider()
-                            .padding(.trailing, 8)
-                    }
-
-                    Group {
-                        if apps.isEmpty {
-                            Text("No windows on this display")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.trailing, 10)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                        removal: .opacity
-                                    )
+                        // One row: workspace groups, the one on screen
+                        // holding the pills (Pills Follow Workspace), else
+                        // the per-app pills after the groups.
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                WorkspaceRowView(
+                                    groups: workspaceGroups,
+                                    emptyWorkspaceTarget: emptyWorkspaceTarget,
+                                    expandsVisibleWorkspace: pillsFollowWorkspace,
+                                    onSwitchWorkspace: onSwitchWorkspace,
+                                    onFocusWindow: onFocusWorkspaceWindow,
+                                    onMoveWindow: onMoveWindowToWorkspace,
+                                    pills: { appPills }
                                 )
-                        } else {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 5) {
-                                    ForEach(apps) { app in
-                                        DisplayBarAppPill(
-                                            app: app,
-                                            onSwitch: onSwitch,
-                                            onHoverChanged: onAppHoverChanged
-                                        )
-                                        .overlay(
-                                            DisplayBarPillRightClickCatcher { event, view in
-                                                onShowAppMenu(app.processID, event, view)
-                                            }
-                                        )
-                                        .transition(
-                                            .asymmetric(
-                                                insertion: .opacity.combined(with: .scale(scale: 0.92)),
-                                                removal: .opacity
-                                            )
-                                        )
-                                    }
+
+                                if !pillsFollowWorkspace, !apps.isEmpty {
+                                    Divider()
+                                        .padding(.vertical, 9)
+
+                                    appPills
                                 }
-                                .padding(.trailing, 10)
                             }
-                            .scrollBounceBehavior(.basedOnSize)
+                            .padding(.trailing, 10)
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                    } else if apps.isEmpty {
+                        Text("No windows on this display")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.trailing, 10)
                             .transition(
                                 .asymmetric(
                                     insertion: .opacity.combined(with: .move(edge: .bottom)),
                                     removal: .opacity
                                 )
                             )
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            appPills
+                                .padding(.trailing, 10)
                         }
+                        .scrollBounceBehavior(.basedOnSize)
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                removal: .opacity
+                            )
+                        )
                     }
-                    .frame(height: BarLayoutConstants.panelHeight)
+                }
+                .frame(height: BarLayoutConstants.panelHeight)
+
+                if showsFolders {
+                    Divider()
+                        .padding(.vertical, 9)
+
+                    FolderPeekStripView(
+                        manager: folderPeekManager,
+                        rowCount: 1,
+                        onOpenFolderMenu: onOpenFolderMenu,
+                        onAddFolder: onAddFolder,
+                        onChooseImage: onChooseImage
+                    )
+                }
+
+                if showsSystemStats {
+                    Divider()
+                        .padding(.vertical, 9)
+
+                    SystemStatsWidgetsView(
+                        monitor: systemStatsMonitor,
+                        rowCount: 2
+                    )
                 }
             }
             .padding(.leading, 8)
@@ -159,6 +182,29 @@ struct DisplayBottomBarView: View {
         .onHover(perform: onBarHoverChanged)
         .contextMenu {
             barMenuItems
+        }
+    }
+
+    private var appPills: some View {
+        HStack(spacing: 5) {
+            ForEach(apps) { app in
+                DisplayBarAppPill(
+                    app: app,
+                    onSwitch: onSwitch,
+                    onHoverChanged: onAppHoverChanged
+                )
+                .overlay(
+                    DisplayBarPillRightClickCatcher { event, view in
+                        onShowAppMenu(app.processID, event, view)
+                    }
+                )
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.92)),
+                        removal: .opacity
+                    )
+                )
+            }
         }
     }
 
@@ -186,6 +232,15 @@ struct DisplayBottomBarView: View {
             )
 
             Toggle(
+                "Show Empty Workspaces",
+                isOn: Binding(
+                    get: { showsEmptyWorkspaces },
+                    set: onShowsEmptyWorkspacesToggled
+                )
+            )
+            .disabled(!showsWorkspaces)
+
+            Toggle(
                 "Pills Follow Workspace",
                 isOn: Binding(
                     get: { pillsFollowWorkspace },
@@ -193,6 +248,22 @@ struct DisplayBottomBarView: View {
                 )
             )
         }
+
+        Toggle(
+            "Show Folders",
+            isOn: Binding(
+                get: { showsFolders },
+                set: onShowsFoldersToggled
+            )
+        )
+
+        Toggle(
+            "Show System Stats",
+            isOn: Binding(
+                get: { showsSystemStats },
+                set: onShowsSystemStatsToggled
+            )
+        )
 
         Toggle(
             "Hide Off-Screen Windows",
@@ -261,6 +332,35 @@ struct DisplayBottomBarView: View {
     }
 }
 
+/// Opens the Start menu (frequently used apps, all apps, Applications folder).
+private struct DisplayBarStartButton: View {
+    let onShowMenu: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onShowMenu) {
+            Image(systemName: "square.grid.2x2.fill")
+                .font(.system(size: BarLayoutConstants.startButtonSymbolSize, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(
+                    width: BarLayoutConstants.pinHitAreaSize,
+                    height: BarLayoutConstants.pinHitAreaSize
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.white.opacity(isHovering ? 0.18 : 0))
+                )
+                // Full bar height, so a click at the screen edge still lands.
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("Applications")
+    }
+}
+
 /// Pinned app icons at the left of the bar. As wide as its icons, up to
 /// `maxWidth`; scrolls sideways past that.
 private struct DisplayBarPinnedStrip: View {
@@ -270,8 +370,7 @@ private struct DisplayBarPinnedStrip: View {
     let rowCount: Int
     let maxWidth: CGFloat
     let onOpen: (PinnedAppItem) -> Void
-    let onUnpin: (PinnedAppItem) -> Void
-    let onMove: (PinnedAppItem, PinMove) -> Void
+    let onShowMenu: (PinnedAppItem, Set<PinMove>, NSEvent, NSView) -> Void
 
     private var columnCount: Int {
         let rows = max(1, rowCount)
@@ -305,8 +404,7 @@ private struct DisplayBarPinnedStrip: View {
                                 isFirst: entry.index == 0,
                                 isLast: entry.index == pinnedApps.count - 1,
                                 onOpen: onOpen,
-                                onUnpin: onUnpin,
-                                onMove: onMove
+                                onShowMenu: onShowMenu
                             )
                         }
                     }
@@ -324,10 +422,13 @@ private struct DisplayBarPinnedIcon: View {
     let isFirst: Bool
     let isLast: Bool
     let onOpen: (PinnedAppItem) -> Void
-    let onUnpin: (PinnedAppItem) -> Void
-    let onMove: (PinnedAppItem, PinMove) -> Void
+    let onShowMenu: (PinnedAppItem, Set<PinMove>, NSEvent, NSView) -> Void
 
     @State private var isHovering = false
+
+    private var availableMoves: Set<PinMove> {
+        Set(PinMove.allCases.filter(isMoveAvailable))
+    }
 
     private func isMoveAvailable(_ move: PinMove) -> Bool {
         switch move {
@@ -374,26 +475,13 @@ private struct DisplayBarPinnedIcon: View {
                 isHovering = hovering
             }
         }
-        .contextMenu {
-            if !(isFirst && isLast) {
-                ForEach(PinMove.allCases, id: \.self) { move in
-                    Button {
-                        onMove(item, move)
-                    } label: {
-                        Label(move.menuTitle, systemImage: move.systemImageName)
-                    }
-                    .disabled(!isMoveAvailable(move))
-                }
-
-                Divider()
+        // AppKit menu (not .contextMenu) so it can list the app's windows
+        // from every workspace and offer Quit, like a pill's menu.
+        .overlay(
+            DisplayBarPillRightClickCatcher { event, view in
+                onShowMenu(item, availableMoves, event, view)
             }
-
-            Button {
-                onUnpin(item)
-            } label: {
-                Label("Unpin \(item.name)", systemImage: "pin.slash")
-            }
-        }
+        )
         .animation(DisplayBottomBarAnimation.appStateChange, value: item.isRunning)
     }
 }
@@ -414,6 +502,7 @@ private struct DisplayBarAppPill: View {
 
                 Text(app.name)
                     .font(.system(size: 13, weight: .semibold))
+                    .italic(app.isMinimized)
                     .foregroundStyle(app.isFrontmost ? Color.black : Color.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -435,6 +524,8 @@ private struct DisplayBarAppPill: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .frame(alignment: .leading)
+            // Minimized windows stay on their workspace, dimmed.
+            .opacity(app.isMinimized ? 0.5 : 1)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(
@@ -477,7 +568,8 @@ private struct DisplayBarAppPill: View {
         // Per-window pills (Pills Follow Workspace) can be dropped on a
         // workspace in the workspace row.
         .windowDragSource(
-            windowID: app.windowID,
+            // AeroSpace cannot move a minimized window.
+            windowID: app.isMinimized ? nil : app.windowID,
             previewIcon: NSRunningApplication(processIdentifier: app.processID)?.icon
                 ?? NSWorkspace.shared.icon(for: .applicationBundle)
         )

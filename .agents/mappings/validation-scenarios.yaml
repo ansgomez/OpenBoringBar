@@ -46,6 +46,10 @@ validation_scenarios:
       - quit_app_and_reopen_from_pin
       - reorder_from_pin_menu
       - unpin_from_pin_menu
+      - pin_menu_lists_windows_from_other_workspaces_and_quits_app
+      - with_aerospace_click_pin_of_app_on_other_workspace_and_verify_new_window_opens_here
+      - with_aerospace_click_pin_of_app_on_this_workspace_and_verify_it_focuses_without_new_window
+      - shift_click_pin_and_new_window_menu_item_open_new_window_here
       - switch_show_pins_on_modes_on_two_displays
       - relaunch_bar_and_confirm_pins_persist
 
@@ -61,10 +65,38 @@ validation_scenarios:
     title: AeroSpace workspace row
     required: false
     steps:
-      - with_aerospace_verify_row_lists_non_empty_and_visible_workspaces
+      - with_aerospace_verify_single_row_lists_non_empty_and_visible_workspaces
       - click_workspace_name_and_icon_and_verify_switch_and_focus
       - drag_icon_to_other_group_and_to_plus_and_verify_window_moved
-      - toggle_show_workspaces_off_and_verify_bar_height_44
-      - with_pills_follow_workspace_verify_one_pill_per_window_and_click_focuses_it
+      - toggle_show_workspaces_off_and_verify_only_pills_remain
+      - with_pills_follow_workspace_verify_visible_group_holds_one_pill_per_window_and_click_focuses_it
       - drag_pill_onto_workspace_group_and_verify_window_moved
+      - minimize_window_and_verify_dimmed_pill_stays_on_its_workspace
+      - click_dimmed_pill_from_another_workspace_and_verify_window_restored_there
+
+  - id: start_menu
+    title: Start menu and workspace layouts
+    required: false
+    steps:
+      - open_start_menu_and_verify_frequent_apps_include_all_pinned_ones
+      - right_click_frequent_app_remove_it_then_restore_removed_apps
+      - open_app_from_all_applications_and_browse_applications_folder
+      - on_empty_workspace_run_terminal_finder_preview_layout_and_verify_arrangement
+      - toggle_show_empty_workspaces_and_verify_row_and_plus_target
+
+  - id: system_stats_widgets
+    title: System stats widgets
+    required: false
+    steps:
+      - verify_cpu_memory_battery_disk_values_against_activity_monitor_and_pmset
+      - click_each_widget_and_verify_target_opens
+      - toggle_show_system_stats_off_and_on
+
+  - id: folder_widgets
+    title: Folder widgets
+    required: false
+    steps:
+      - first_launch_imports_folder_peek_folders_or_downloads
+      - click_folder_open_file_option_click_reveals_browse_submenu
+      - add_remove_folder_and_change_sort_order_via_right_click
 

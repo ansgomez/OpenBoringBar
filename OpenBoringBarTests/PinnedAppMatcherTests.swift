@@ -52,4 +52,13 @@ final class PinnedAppMatcherTests: XCTestCase {
         ]))
         XCTAssertFalse(PinnedAppMatcher.isRunning(pin, resolvedURL: nil, among: []))
     }
+
+    func testRunningMatchReturnsTheProcess() {
+        let pin = PinnedApp(bundleIdentifier: "x", bundleURL: pathA)
+        let match = PinnedAppMatcher.runningMatch(pin, resolvedURL: pathA, among: [
+            RunningAppDescriptor(bundleIdentifier: "y", bundleURL: pathA, processID: 7),
+            RunningAppDescriptor(bundleIdentifier: "x", bundleURL: pathB, processID: 42)
+        ])
+        XCTAssertEqual(match?.processID, 42)
+    }
 }

@@ -50,6 +50,25 @@ final class WorkspaceGroupBuilderTests: XCTestCase {
         XCTAssertTrue(groups[2].windows.isEmpty)
     }
 
+    func testIncludesEmptyWorkspacesInKeyboardOrder() {
+        let state = AeroSpaceState(
+            workspaces: [
+                workspace("0"), workspace("1"), workspace("2"), workspace("9"),
+                workspace("A"), workspace("R", visible: true, focused: true),
+                workspace("3", screen: 2)
+            ],
+            windows: [window(1, on: "2")]
+        )
+        let groups = WorkspaceGroupBuilder.groups(from: state, screenNumber: 1, includesEmpty: true)
+        XCTAssertEqual(groups.map(\.name), ["1", "2", "9", "0", "A", "R"], "1-9, then 0, then other names")
+        XCTAssertEqual(groups[1].windows.map(\.id), [1])
+        XCTAssertEqual(
+            WorkspaceGroupBuilder.groups(from: state, screenNumber: 1).map(\.name),
+            ["2", "R"],
+            "empty ones hidden by default argument"
+        )
+    }
+
     func testOnlyWorkspacesOfTheScreen() {
         let state = AeroSpaceState(
             workspaces: [workspace("1", screen: 1), workspace("S", screen: 2, visible: true)],
@@ -75,5 +94,52 @@ final class WorkspaceGroupBuilderTests: XCTestCase {
 
         let full = AeroSpaceState(workspaces: [workspace("0"), workspace("1")], windows: [window(1, on: "1")])
         XCTAssertNil(WorkspaceGroupBuilder.emptyWorkspaceTarget(in: full, screenNumber: 1))
+    }
+
+    // MARK: Minimized windows
+
+    private func minimized(_ id: CGWindowID, screen: Int = 1) -> MinimizedWindow {
+        MinimizedWindow(
+            id: id,
+            processID: 1,
+            appName: "App",
+            title: "w\(id)",
+            frame: CGRect(x: CGFloat(screen) * 1000, y: 0, width: 10, height: 10)
+        )
+    }
+
+    private func minimizedIDs(
+        on workspace: String,
+        screen: Int = 1,
+        _ windows: [MinimizedWindow],
+        lastKnown: [CGWindowID: String] = [:],
+        listed: Set<CGWindowID> = []
+    ) -> [CGWindowID] {
+        WorkspaceGroupBuilder.minimizedWindows(
+            onWorkspace: workspace,
+            screenNumber: screen,
+            minimized: windows,
+            lastKnownWorkspace: lastKnown,
+            listedWindowIDs: listed,
+            screenNumberOf: { Int($0.frame.minX / 1000) }
+        ).map(\.id)
+    }
+
+    func testMinimizedWindowStaysOnItsLastWorkspace() {
+        let windows = [minimized(1), minimized(2)]
+        let lastKnown: [CGWindowID: String] = [1: "A", 2: "B"]
+        XCTAssertEqual(minimizedIDs(on: "A", windows, lastKnown: lastKnown), [1])
+        XCTAssertEqual(minimizedIDs(on: "B", windows, lastKnown: lastKnown), [2])
+        XCTAssertEqual(minimizedIDs(on: "C", windows, lastKnown: lastKnown), [])
+    }
+
+    func testUnknownMinimizedWindowGoesToVisibleWorkspaceOfItsScreen() {
+        let windows = [minimized(1, screen: 1), minimized(2, screen: 2)]
+        XCTAssertEqual(minimizedIDs(on: "A", screen: 1, windows), [1])
+        XCTAssertEqual(minimizedIDs(on: "S", screen: 2, windows), [2])
+    }
+
+    func testMinimizedWindowStillListedByAeroSpaceIsSkipped() {
+        XCTAssertEqual(minimizedIDs(on: "A", [minimized(1)], lastKnown: [1: "A"], listed: [1]), [])
     }
 }

@@ -2,6 +2,11 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
+/// Private but long-stable HIServices call (used by AeroSpace, yabai and
+/// others) that returns the CoreGraphics window number of an AX window.
+@_silgen_name("_AXUIElementGetWindow")
+private func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
+
 enum AXAttributeName {
     static let focusedWindow = "AXFocusedWindow" as CFString
     static let windows = "AXWindows" as CFString
@@ -14,6 +19,10 @@ enum AXAttributeName {
     static let size = "AXSize" as CFString
     static let minimized = "AXMinimized" as CFString
     static let fullScreen = "AXFullScreen" as CFString
+    static let menuBar = "AXMenuBar" as CFString
+    static let enabled = "AXEnabled" as CFString
+    static let menuItemCommandCharacter = "AXMenuItemCmdChar" as CFString
+    static let menuItemCommandModifiers = "AXMenuItemCmdModifiers" as CFString
 }
 
 enum AXNotificationName {
@@ -74,6 +83,16 @@ enum AXElementInspector {
         boolAttributeValue(of: AXAttributeName.minimized, from: window) ?? false
     }
 
+    /// CoreGraphics window number of an AX window (same as AeroSpace's
+    /// window ID), or `nil` if the system does not report one.
+    static func windowID(of window: AXUIElement) -> CGWindowID? {
+        var windowID: CGWindowID = 0
+        guard _AXUIElementGetWindow(window, &windowID) == .success, windowID != 0 else {
+            return nil
+        }
+        return windowID
+    }
+
     static func isWindowFullScreen(_ window: AXUIElement) -> Bool {
         boolAttributeValue(of: AXAttributeName.fullScreen, from: window) ?? false
     }
@@ -126,6 +145,31 @@ enum AXElementInspector {
         }
 
         return number.boolValue
+    }
+
+    static func intAttributeValue(of attribute: CFString, from element: AXUIElement) -> Int? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+
+        guard result == .success,
+              let number = value as? NSNumber else {
+            return nil
+        }
+
+        return number.intValue
+    }
+
+    static func elementAttributeValue(of attribute: CFString, from element: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+
+        guard result == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+
+        return unsafeBitCast(value, to: AXUIElement.self)
     }
 
     static func pointAttributeValue(of attribute: CFString, from element: AXUIElement) -> CGPoint? {

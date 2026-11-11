@@ -38,7 +38,8 @@ final class InstalledApplicationProvider: InstalledApplicationProviding {
                 applications.append(
                     LaunchableApplicationItem(
                         bundleURL: candidateURL,
-                        name: applicationName(for: candidateURL)
+                        name: applicationName(for: candidateURL),
+                        bundleIdentifier: Bundle(url: candidateURL)?.bundleIdentifier
                     )
                 )
             }

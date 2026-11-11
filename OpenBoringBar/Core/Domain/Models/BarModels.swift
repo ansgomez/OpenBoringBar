@@ -8,6 +8,9 @@ struct RunningAppItem: Identifiable, Hashable {
     /// Set when the pill stands for one window (AeroSpace "pills follow
     /// workspace" mode) instead of the whole app.
     var windowID: CGWindowID? = nil
+    /// The window is minimized to the Dock; the pill is drawn dimmed and a
+    /// click restores the window.
+    var isMinimized: Bool = false
 
     var id: String {
         windowID.map { "window-\($0)" } ?? "app-\(processID)"

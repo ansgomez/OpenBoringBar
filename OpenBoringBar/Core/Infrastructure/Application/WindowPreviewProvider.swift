@@ -254,13 +254,13 @@ final class WindowPreviewProvider: WindowPreviewProviding {
             return requestAccepted
         }
 
-        let descriptor = activationDescriptor(
-            for: windowID,
-            processID: processID
-        )
-        guard let targetWindow = bestMatchingWindow(
+        // Exact match by window number first. The title/frame heuristic below
+        // cannot pick a minimized window when titles are unavailable (no Screen
+        // Recording permission), because it penalizes minimized windows.
+        let exactWindow = windows.first { AXElementInspector.windowID(of: $0) == windowID }
+        guard let targetWindow = exactWindow ?? bestMatchingWindow(
             from: windows,
-            descriptor: descriptor
+            descriptor: activationDescriptor(for: windowID, processID: processID)
         ) else {
             return requestAccepted
         }

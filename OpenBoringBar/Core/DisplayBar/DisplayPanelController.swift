@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class DisplayPanelController {
     private static let autoCollapseDefaultsKey = "OpenBoringBar.autoCollapseEnabled"
@@ -244,6 +245,26 @@ final class DisplayPanelController {
                 isAeroSpaceAvailable: barManager.isAeroSpaceAvailable,
                 showsWorkspaces: barManager.showsWorkspaces,
                 pillsFollowWorkspace: barManager.pillsFollowWorkspace,
+                showsEmptyWorkspaces: barManager.showsEmptyWorkspaces,
+                systemStatsMonitor: barManager.systemStatsMonitor,
+                showsSystemStats: barManager.showsSystemStats,
+                onShowsSystemStatsToggled: { [barManager] isEnabled in
+                    barManager.setShowsSystemStats(isEnabled)
+                },
+                folderPeekManager: barManager.folderPeekManager,
+                showsFolders: barManager.showsFolders,
+                onShowsFoldersToggled: { [barManager] isEnabled in
+                    barManager.setShowsFolders(isEnabled)
+                },
+                onOpenFolderMenu: { [weak self] folder in
+                    self?.showFolderMenu(folder)
+                },
+                onAddFolder: { [weak self] in
+                    self?.promptToAddFolder()
+                },
+                onChooseImage: { message in
+                    Self.promptForImage(message: message)
+                },
                 workspaceGroups: workspaceGroups,
                 emptyWorkspaceTarget: emptyWorkspaceTarget,
                 onSwitchWorkspace: { [barManager] workspace in
@@ -261,20 +282,35 @@ final class DisplayPanelController {
                 onPillsFollowWorkspaceToggled: { [barManager] isEnabled in
                     barManager.setPillsFollowWorkspace(isEnabled)
                 },
+                onShowsEmptyWorkspacesToggled: { [barManager] isEnabled in
+                    barManager.setShowsEmptyWorkspaces(isEnabled)
+                },
+                onShowStartMenu: { [weak self] in
+                    self?.showStartMenu(displayID: displayID)
+                },
                 onOpenPinnedApp: { [barManager] item in
-                    barManager.openPinnedApp(item)
+                    barManager.openPinnedApp(
+                        item,
+                        displayID: displayID,
+                        forcesNewWindow: NSEvent.modifierFlags.contains(.shift)
+                    )
                 },
-                onUnpinPinnedApp: { [barManager] item in
-                    barManager.unpin(item.pin, displayID: displayID)
-                },
-                onMovePinnedApp: { [barManager] item, move in
-                    barManager.movePin(item, move, displayID: displayID)
+                onShowPinMenu: { [weak self] item, availableMoves, event, view in
+                    self?.showPinMenu(
+                        displayID: displayID,
+                        item: item,
+                        availableMoves: availableMoves,
+                        event: event,
+                        view: view
+                    )
                 },
                 onPinDisplayModeChanged: { [barManager] mode in
                     barManager.setPinDisplayMode(mode)
                 },
                 onSwitch: { [barManager] app in
-                    if let windowID = app.windowID {
+                    if app.isMinimized, let windowID = app.windowID {
+                        barManager.restoreMinimizedWindow(processID: app.processID, windowID: windowID)
+                    } else if let windowID = app.windowID {
                         barManager.focusAeroSpaceWindow(windowID)
                     } else {
                         barManager.switchToApp(processID: app.processID, displayID: displayID)
@@ -519,7 +555,6 @@ final class DisplayPanelController {
             y: screen.frame.minY,
             width: screen.frame.width,
             height: BarLayoutConstants.panelHeight
-                + (barManager.isWorkspaceRowVisible ? BarLayoutConstants.workspaceRowHeight : 0)
         )
     }
 
@@ -689,11 +724,13 @@ final class DisplayPanelController {
     }
 
     /// "W  Window title", with the workspace name dimmed unless it is the
-    /// workspace on screen.
+    /// workspace on screen. Minimized windows get a dimmed title and a
+    /// "minimized" note.
     private static func windowMenuTitle(
         _ title: String,
         workspace: String,
-        isCurrent: Bool
+        isCurrent: Bool,
+        isMinimized: Bool = false
     ) -> NSAttributedString {
         let font = NSFont.menuFont(ofSize: 0)
         let result = NSMutableAttributedString(
@@ -705,9 +742,86 @@ final class DisplayPanelController {
         )
         result.append(NSAttributedString(
             string: "   \(title)",
-            attributes: [.font: font, .foregroundColor: NSColor.labelColor]
+            attributes: [
+                .font: font,
+                .foregroundColor: isMinimized ? NSColor.secondaryLabelColor : NSColor.labelColor
+            ]
         ))
+        if isMinimized {
+            result.append(NSAttributedString(
+                string: "  (minimized)",
+                attributes: [.font: font, .foregroundColor: NSColor.tertiaryLabelColor]
+            ))
+        }
         return result
+    }
+
+    /// Opens the Start menu at the pointer. Blocks until the menu closes, so
+    /// the builder (which owns submenu delegates) stays alive.
+    private func showStartMenu(displayID: CGDirectDisplayID) {
+        let builder = StartMenuBuilder()
+        let menu = builder.menu(
+            frequent: barManager.frequentApplications(on: displayID),
+            hiddenFrequentCount: barManager.hiddenFrequentApplicationCount,
+            all: barManager.launchableApplications,
+            layouts: barManager.isAeroSpaceAvailable ? barManager.workspaceLayouts() : nil,
+            onOpen: { [barManager] url in
+                barManager.openApplication(bundleURL: url)
+            },
+            onRunLayout: { [barManager] layout in
+                barManager.runWorkspaceLayout(layout, displayID: displayID)
+            },
+            onHideFrequent: { [barManager] bundleIdentifier in
+                barManager.hideFromFrequentApplications(bundleIdentifier: bundleIdentifier)
+            },
+            onRestoreHiddenFrequent: { [barManager] in
+                barManager.restoreHiddenFrequentApplications()
+            }
+        )
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        withExtendedLifetime(builder) {}
+    }
+
+    /// Opens a folder widget's menu at the pointer. The call blocks until the
+    /// menu closes, so the builder (which owns submenu delegates) stays alive.
+    private func showFolderMenu(_ folder: PeekFolder) {
+        let builder = FolderPeekMenuBuilder()
+        let menu = builder.menu(for: folder)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        withExtendedLifetime(builder) {}
+    }
+
+    /// Picks an image file; returns its path, or `nil` if cancelled.
+    private static func promptForImage(message: String) -> String? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Use Image"
+        panel.message = message
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else {
+            return nil
+        }
+        return panel.url?.path
+    }
+
+    private func promptToAddFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Choose folders to show in the bar"
+        // The bar never activates itself; the panel needs the app in front.
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else {
+            return
+        }
+        for url in panel.urls {
+            barManager.folderPeekManager.add(url)
+        }
     }
 
     private func showAppMenu(
@@ -719,6 +833,76 @@ final class DisplayPanelController {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        addNewWindowItem(to: menu, processID: processID, displayID: displayID)
+        addWindowItems(to: menu, processID: processID, displayID: displayID)
+
+        if let isPinned = barManager.pinState(ofRunningApp: processID, displayID: displayID) {
+            let pinItem = ClosureMenuItem(title: isPinned ? "Unpin from Bar" : "Pin to Bar") { [weak self] in
+                if isPinned {
+                    self?.barManager.unpinRunningApp(processID: processID, displayID: displayID)
+                } else {
+                    self?.barManager.pinRunningApp(processID: processID, displayID: displayID)
+                }
+            }
+            pinItem.image = NSImage(
+                systemSymbolName: isPinned ? "pin.slash" : "pin",
+                accessibilityDescription: nil
+            )
+            menu.addItem(pinItem)
+        }
+
+        addQuitItem(to: menu, processID: processID)
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
+    }
+
+    /// Pin right-click: the app's windows from every workspace (when it
+    /// runs), the move and unpin items, then Quit (when it runs).
+    private func showPinMenu(
+        displayID: CGDirectDisplayID,
+        item: PinnedAppItem,
+        availableMoves: Set<PinMove>,
+        event: NSEvent,
+        view: NSView
+    ) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        if let processID = item.processID {
+            addNewWindowItem(to: menu, processID: processID, displayID: displayID)
+            addWindowItems(to: menu, processID: processID, displayID: displayID)
+        }
+
+        if !availableMoves.isEmpty {
+            for move in PinMove.allCases {
+                let moveItem = ClosureMenuItem(title: move.menuTitle) { [weak self] in
+                    self?.barManager.movePin(item, move, displayID: displayID)
+                }
+                moveItem.image = NSImage(systemSymbolName: move.systemImageName, accessibilityDescription: nil)
+                moveItem.isEnabled = availableMoves.contains(move)
+                menu.addItem(moveItem)
+            }
+            menu.addItem(.separator())
+        }
+
+        let unpinItem = ClosureMenuItem(title: "Unpin \(item.name)") { [weak self] in
+            self?.barManager.unpin(item.pin, displayID: displayID)
+        }
+        unpinItem.image = NSImage(systemSymbolName: "pin.slash", accessibilityDescription: nil)
+        menu.addItem(unpinItem)
+
+        if let processID = item.processID {
+            addQuitItem(to: menu, processID: processID)
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
+    }
+
+    /// The app's windows from every workspace, sorted by workspace, then its
+    /// minimized windows, then a separator.
+    private func addWindowItems(
+        to menu: NSMenu,
+        processID: pid_t,
+        displayID: CGDirectDisplayID
+    ) {
         let workspaces = barManager.currentAeroSpaceState()
         let windows = Self.sortedByWorkspace(
             barManager.windowTitles(for: processID, on: displayID),
@@ -742,33 +926,49 @@ final class DisplayPanelController {
             menu.addItem(item)
         }
 
-        if !windows.isEmpty {
+        let listedIDs = Set(windows.map(\.windowID))
+        let minimized = barManager.minimizedWindows(of: processID).filter { !listedIDs.contains($0.id) }
+        let appName = NSRunningApplication(processIdentifier: processID)?.localizedName ?? "Window"
+        for window in minimized {
+            let title = window.title.isEmpty ? appName : window.title
+            let item = ClosureMenuItem(title: title) { [weak self] in
+                self?.barManager.restoreMinimizedWindow(processID: processID, windowID: window.id)
+            }
+            item.attributedTitle = Self.windowMenuTitle(
+                title,
+                workspace: barManager.lastKnownWorkspace(of: window.id) ?? "·",
+                isCurrent: false,
+                isMinimized: true
+            )
+            menu.addItem(item)
+        }
+
+        if !windows.isEmpty || !minimized.isEmpty {
             menu.addItem(.separator())
         }
+    }
 
-        if let isPinned = barManager.pinState(ofRunningApp: processID, displayID: displayID) {
-            let pinItem = ClosureMenuItem(title: isPinned ? "Unpin from Bar" : "Pin to Bar") { [weak self] in
-                if isPinned {
-                    self?.barManager.unpinRunningApp(processID: processID, displayID: displayID)
-                } else {
-                    self?.barManager.pinRunningApp(processID: processID, displayID: displayID)
-                }
-            }
-            pinItem.image = NSImage(
-                systemSymbolName: isPinned ? "pin.slash" : "pin",
-                accessibilityDescription: nil
-            )
-            menu.addItem(pinItem)
+    /// "New Window": opens one on the workspace shown on this bar.
+    private func addNewWindowItem(
+        to menu: NSMenu,
+        processID: pid_t,
+        displayID: CGDirectDisplayID
+    ) {
+        let item = ClosureMenuItem(title: "New Window") { [weak self] in
+            self?.barManager.openNewWindow(processID: processID, displayID: displayID)
         }
+        item.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: nil)
+        menu.addItem(item)
+        menu.addItem(.separator())
+    }
 
+    private func addQuitItem(to menu: NSMenu, processID: pid_t) {
         let appName = NSRunningApplication(processIdentifier: processID)?.localizedName ?? "App"
         let quitItem = ClosureMenuItem(title: "Quit \(appName)") { [weak self] in
             self?.barManager.quitApplication(processID: processID)
         }
         quitItem.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
         menu.addItem(quitItem)
-
-        NSMenu.popUpContextMenu(menu, with: event, for: view)
     }
 
     private func handleQuitRequested() {
@@ -975,21 +1175,3 @@ final class DisplayPanelWindow: NSPanel {
 }
 
 /// Menu item that runs a closure; it is its own target.
-private final class ClosureMenuItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(title: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(title: title, action: #selector(runHandler), keyEquivalent: "")
-        target = self
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    @objc private func runHandler() {
-        handler()
-    }
-}
