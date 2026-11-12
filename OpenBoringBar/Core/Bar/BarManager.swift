@@ -635,7 +635,8 @@ final class BarManager: ObservableObject {
                     processID: processID,
                     appName: window.appName,
                     title: window.title,
-                    frame: CGDisplayBounds(displayID)
+                    frame: CGDisplayBounds(displayID),
+                    bundleIdentifier: window.bundleIdentifier
                 ),
                 ProcessInfo.processInfo.systemUptime + Self.pendingWindowChangeLifetime
             )
@@ -760,7 +761,8 @@ final class BarManager: ObservableObject {
                         name: window.title.isEmpty ? window.appName : window.title,
                         isFrontmost: window.id == aeroSpaceState.focusedWindowID,
                         notificationBadgeCount: max(0, badgeCountByProcessID[processID] ?? 0),
-                        windowID: window.id
+                        windowID: window.id,
+                        bundleIdentifier: window.bundleIdentifier
                     )
                 }
 

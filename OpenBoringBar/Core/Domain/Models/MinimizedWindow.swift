@@ -9,4 +9,5 @@ struct MinimizedWindow: Identifiable, Hashable {
     let title: String
     /// Last frame before minimizing, used to pick a screen.
     let frame: CGRect
+    var bundleIdentifier: String? = nil
 }

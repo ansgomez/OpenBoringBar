@@ -33,7 +33,7 @@
   - permission setup
   - multi-display lifecycle
   - capsule app switch
-  - launcher flow
+  - Start menu
   - bottom guard
 
 ## Documentation Updates

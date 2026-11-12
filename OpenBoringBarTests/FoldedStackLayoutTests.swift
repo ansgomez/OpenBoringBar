@@ -41,7 +41,7 @@ final class FoldedStackLayoutTests: XCTestCase {
     func testFoldedIconsFormRepeatingDiagonals() {
         let offsets = (0..<4).map { FoldedStackLayout.offset(index: $0, isExpanded: false, iconSlot: slot) }
         XCTAssertEqual(offsets.map(\.width), [0, 9, 18, 27])
-        XCTAssertEqual(offsets.map(\.height), [-5, 0, 5, -5], "descends over three icons, then starts again")
+        XCTAssertEqual(offsets.map(\.height), [-4, 0, 4, -4], "descends over three icons, then starts again")
         XCTAssertEqual((0..<3).map { FoldedStackLayout.rise(position: $0, total: 6) }, [-3, 0, 3])
     }
 

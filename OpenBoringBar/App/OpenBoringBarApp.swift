@@ -6,6 +6,14 @@ struct OpenBoringBarApp: App {
     @StateObject private var permissionManager = PermissionManager()
     @StateObject private var runtimeCoordinator = AppRuntimeCoordinator()
 
+    init() {
+        // Developer tool: `OpenBoringBar --render-screenshots <folder>` draws
+        // the documentation images from made-up data and quits.
+        if let folder = ScreenshotRenderer.outputFolder(fromArguments: CommandLine.arguments) {
+            exit(ScreenshotRenderer.renderAll(to: folder) ? 0 : 1)
+        }
+    }
+
     private let setupMinHeight: CGFloat = 590
     private let runtimeMinHeight: CGFloat = 540
     private let width: CGFloat = 500

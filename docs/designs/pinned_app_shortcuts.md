@@ -1,7 +1,11 @@
 # Pinned App Shortcuts
 
 *   **Author:** Andres Gomez
-*   **Status:** Proposed
+*   **Status:** Implemented, then extended. This document is the original
+    design and is kept as a record; it does not describe later changes
+    (single-row bar, idle-pin stack, running apps after the pins, clicks
+    that stay on the AeroSpace workspace, Start menu). `README.md` and
+    `AGENTS.md` describe the current behavior.
 *   **Date:** 2026-11-03
 
 --------------------------------------------------------------------------------

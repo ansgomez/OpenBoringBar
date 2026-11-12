@@ -23,13 +23,13 @@ validation_scenarios:
       - switch_using_capsules
       - verify_frontmost_app_changes
 
-  - id: launcher_flow
-    title: Launcher open/search/launch
+  - id: start_menu_launch
+    title: Start menu open and launch
     required: true
     steps:
-      - open_launcher
-      - search_application
-      - launch_and_verify_focus
+      - open_start_menu
+      - launch_app_from_frequently_used_and_from_all_applications
+      - verify_app_opens_and_has_focus
 
   - id: bottom_guard
     title: Bottom guard behavior
@@ -62,7 +62,7 @@ validation_scenarios:
       - toggle_hide_off_screen_windows_off_and_verify_pill_returns
 
   - id: aerospace_workspace_row
-    title: AeroSpace workspace row
+    title: AeroSpace workspace groups
     required: false
     steps:
       - with_aerospace_verify_single_row_lists_non_empty_and_visible_workspaces

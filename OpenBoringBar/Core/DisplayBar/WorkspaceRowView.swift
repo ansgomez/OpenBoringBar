@@ -70,7 +70,8 @@ private struct WorkspaceMinimizedGroupView: View {
 
             ForEach(windows) { window in
                 Image(nsImage: AppIconProvider.shared.icon(
-                    forBundleIdentifier: NSRunningApplication(processIdentifier: window.processID)?.bundleIdentifier
+                    forBundleIdentifier: window.bundleIdentifier
+                        ?? NSRunningApplication(processIdentifier: window.processID)?.bundleIdentifier
                 ))
                 .resizable()
                 .interpolation(.high)

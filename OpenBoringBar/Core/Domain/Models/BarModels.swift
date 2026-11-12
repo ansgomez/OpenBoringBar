@@ -11,6 +11,9 @@ struct RunningAppItem: Identifiable, Hashable {
     /// The window is minimized to the Dock; the pill is drawn dimmed and a
     /// click restores the window.
     var isMinimized: Bool = false
+    /// When known, the icon is looked up by bundle (cached) instead of by
+    /// process.
+    var bundleIdentifier: String? = nil
 
     var id: String {
         windowID.map { "window-\($0)" } ?? "app-\(processID)"

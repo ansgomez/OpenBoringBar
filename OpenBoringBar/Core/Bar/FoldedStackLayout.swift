@@ -16,7 +16,7 @@ enum FoldedStackLayout {
     /// Items per diagonal (at least 2).
     static let diagonalLength = 3
     /// Height difference between the first and the last pin of a diagonal.
-    static let pinRise: CGFloat = 10
+    static let pinRise: CGFloat = 8
     /// How far a folded pill reaches over the folded pill before it.
     static let pillOverlap: CGFloat = 15
     /// Height difference within a diagonal of folded pills.

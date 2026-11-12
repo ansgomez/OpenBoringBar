@@ -8,17 +8,30 @@ OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar
 
 ## Screenshots
 
-### Normal Bar
+All images below are drawn by the app itself from made-up data (invented
+windows, titles and system values; only apps that ship with macOS). Nothing is
+captured from a real screen. See [Documentation Images](#documentation-images).
 
-![Normal Bar](docs/screenshots/normal-looks-like.png)
+![The bar under two tiled windows](docs/screenshots/desktop.png)
 
-### Multi-Window Preview
+The whole bar: Start button, pinned apps, running apps, one group per
+workspace, minimized windows, folders, system stats.
 
-![Multi-Window Preview](docs/screenshots/multi-preview-window.png)
+![The whole bar](docs/screenshots/bar.png)
 
-### App Launcher Search
+A short tour: unfolding the pills, moving focus, switching workspace,
+minimizing a window, unfolding the idle pins.
 
-![App Launcher Search](docs/screenshots/file-search.png)
+![Animated tour of the bar](docs/screenshots/bar-cast.gif)
+
+| Pins | Workspaces |
+| --- | --- |
+| ![Pinned and running apps](docs/screenshots/bar-pins.png) | ![Workspace groups](docs/screenshots/bar-workspaces.png) |
+| Idle pins fold into a stack at the far left. Running apps have a dot; apps that are not pinned follow after the divider. | The workspace on screen holds its window pills: full for the focused window, folded chips for the others. A red dot marks unread notifications. Minimized windows sit in the **–** group. |
+
+With the idle pins and the pills unfolded (pointer resting on them):
+
+![The bar with stacks unfolded](docs/screenshots/bar-unfolded.png)
 
 ## Using The Bar
 
@@ -266,6 +279,19 @@ Copies the Debug build to `~/Applications/OpenBoringBar.app`, signs it with
 your Apple Development certificate (or `$SIGN_IDENTITY`; ad-hoc if there is
 none) and relaunches the bar. A stable signature keeps the Accessibility and
 Screen Recording permissions between builds.
+
+## Documentation Images
+
+```bash
+./scripts/render-screenshots.sh
+```
+
+Redraws everything in `docs/screenshots` after a build. The app is started
+with `--render-screenshots <folder>`: it hosts its real bar views in an
+offscreen window, fills them with made-up data (`ScreenshotRenderer`) and
+writes PNGs and one animated GIF. It reads nothing from the screen, AeroSpace
+or your settings, and needs no Screen Recording permission, so the images
+cannot show private windows or files. Run it after changing how the bar looks.
 
 ## Manual Commands
 

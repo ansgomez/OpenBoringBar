@@ -42,6 +42,7 @@ Priority is reliability of core behavior before visual polish.
 │   ├── bootstrap.sh
 │   ├── generate_xcodeproj.rb
 │   ├── install.sh
+│   ├── render-screenshots.sh
 │   ├── OpenBoringBar.entitlements
 │   └── layouts/
 ├── docs/
@@ -86,6 +87,9 @@ Recommended read order:
 # Install the Debug build to ~/Applications with a stable signature, relaunch
 ./scripts/install.sh
 
+# Redraw docs/screenshots from made-up data (after a build)
+./scripts/render-screenshots.sh
+
 # Regenerate Xcode project from source globs (only when needed)
 ruby scripts/generate_xcodeproj.rb
 pod install
@@ -116,58 +120,125 @@ OpenBoringBar/
     OpenBoringBarApp.swift
     PermissionManager.swift
     PermissionSetupView.swift
+    ScreenshotRenderer.swift
   Core/
     Application/
-      AppRuntimeCoordinator.swift
       AppEventBus.swift
+      AppRuntimeCoordinator.swift
     Bar/
+      ActiveWindowBottomGuardManager.swift
+      AeroSpaceStateRetentionRule.swift
+      AeroSpaceWorkspaceManager.swift
+      AppUsageCalculator.swift
+      AppUsageManager.swift
       BarAccessibilityObserverManager.swift
       BarAppSnapshot.swift
       BarDisplayAppOrderManager.swift
       BarDisplayStateBuilder.swift
-      BarManager.swift
-      ActiveWindowBottomGuardManager.swift
       BarLayoutConstants.swift
+      BarManager.swift
+      BottomGuardFramePolicy.swift
+      FoldedStackLayout.swift
+      FolderEntrySorter.swift
+      FolderPeekManager.swift
+      NewWindowMenuItemRule.swift
+      OffScreenWindowRule.swift
+      PinClickRule.swift
       PinnedAppManager.swift
       PinnedAppMatcher.swift
+      SystemStatsCalculator.swift
+      SystemStatsMonitor.swift
+      WorkspaceGroupBuilder.swift
     DisplayBar/
       AppWindowPreviewPanelView.swift
       AppWindowPreviewPanelWindow.swift
       ApplicationLauncherPopoverView.swift
-      DisplayPanelController.swift
+      ClosureMenuItem.swift
       DisplayBottomBarView.swift
+      DisplayPanelController.swift
+      FolderBadgeColor+AppKit.swift
+      FolderIconRenderer.swift
+      FolderPeekMenuBuilder.swift
+      FolderPeekStripView.swift
+      StartMenuBuilder.swift
+      SystemStatsWidgetsView.swift
+      WindowDragSourceModifier.swift
+      WorkspaceRowView.swift
     Domain/
       Models/
+        AeroSpaceState.swift
+        AeroSpaceWindow.swift
+        AeroSpaceWorkspace.swift
+        AppMenuItemInfo.swift
+        AppUsageRecord.swift
+        AppUsageSeed.swift
+        AppUsageSnapshot.swift
         AppWindowPreviewItem.swift
         BarModels.swift
+        BatteryStatus.swift
+        CPUTicks.swift
+        FolderBadgeColor.swift
+        FolderBadgePreset.swift
+        FolderEntry.swift
+        FolderSortOrder.swift
         LaunchableApplicationItem.swift
+        MinimizedWindow.swift
+        PeekFolder.swift
+        PinClickAction.swift
         PinDisplayMode.swift
         PinMove.swift
         PinnedApp.swift
         PinnedAppItem.swift
         PinnedAppsSnapshot.swift
         RunningAppDescriptor.swift
+        StatSeverity.swift
+        SystemStats.swift
+        WorkspaceGroup.swift
+        WorkspaceLayoutScript.swift
     Infrastructure/
-      Application/
-        ApplicationLocationProvider.swift
-        DockNotificationBadgeProvider.swift
-        InstalledApplicationProvider.swift
-        WindowPreviewProvider.swift
-      Persistence/
-        PinnedAppStorageProvider.swift
       Accessibility/
         AXElementInspector.swift
+        AppNewWindowProvider.swift
+      Application/
+        AeroSpaceClient.swift
+        AeroSpaceOutputParser.swift
+        AppIconProvider.swift
+        ApplicationLocationProvider.swift
+        DockNotificationBadgeProvider.swift
+        FolderContentsProvider.swift
+        FolderPeekImporter.swift
+        InstalledApplicationProvider.swift
+        MinimizedWindowProvider.swift
+        SpotlightUsageProvider.swift
+        WindowPreviewProvider.swift
+        WorkspaceLayoutProvider.swift
+      Persistence/
+        AppUsageStorageProvider.swift
+        PeekFolderStorageProvider.swift
+        PinnedAppStorageProvider.swift
       Screen/
         NSScreen+DisplayID.swift
+      System/
+        SystemStatsProvider.swift
   Resources/
-    Assets.xcassets/
-      AppIcon.appiconset/
     Info.plist
+    Assets.xcassets/
 OpenBoringBarTests/
+  AeroSpaceOutputParserTests.swift
+  AeroSpaceStateRetentionRuleTests.swift
+  AppUsageTests.swift
+  BottomGuardFramePolicyTests.swift
+  FoldedStackLayoutTests.swift
+  FolderPeekTests.swift
+  NewWindowMenuItemRuleTests.swift
+  OffScreenWindowRuleTests.swift
+  PinClickRuleTests.swift
   PinnedAppManagerTests.swift
   PinnedAppMatcherTests.swift
   PinnedAppStorageProviderTests.swift
   PinnedAppTestDoubles.swift
+  SystemStatsCalculatorTests.swift
+  WorkspaceGroupBuilderTests.swift
 ```
 
 ### Unit Tests
@@ -264,6 +335,22 @@ OpenBoringBarTests/
    the main thread while enabled (`OpenBoringBar.showSystemStats`).
    `SystemStatsWidgetsView` observes it directly, so samples redraw only the
    widgets, not the whole bar.
+
+### Documentation Images
+
+1. `ScreenshotRenderer` (`App/`) draws everything in `docs/screenshots`:
+   started with `--render-screenshots <folder>` (`OpenBoringBarApp.init`,
+   wrapped by `scripts/render-screenshots.sh`), it hosts the real
+   `DisplayBottomBarView` in an offscreen window and writes PNGs and a GIF.
+2. All content is made up in that file (`Scene`, `DemoApp`): invented
+   windows and titles, fixed system values, system folders, and only apps
+   that ship with macOS. It uses its own `UserDefaults` suite and reads
+   nothing from the screen, AeroSpace or the user's settings. Keep it that
+   way (see Privacy); never replace these images with real screen captures.
+3. `DisplayBottomBarView.showsPinStackUnfolded` / `showsPillsUnfolded` exist
+   only so the renderer can draw the unfolded states without a pointer.
+4. Re-run the script after any change to how the bar looks, and commit the
+   images with the change.
 
 ### Background App
 
@@ -402,11 +489,15 @@ After every code change:
    - permission setup flow
    - multi-display bar create/remove
    - app switch from capsule
-   - launcher open/search/launch
    - bottom guard behavior for frontmost window
-   - pinned apps (pin, open, unpin, Show Pins On modes)
+   - pinned apps (pin, open, unpin, Show Pins On modes), the idle-pin stack
+     and the running apps after the pins
    - pin click with AeroSpace (focus here, new window here, Shift-click)
-   - Start menu (frequent apps, all apps, Applications folder, a layout)
+   - Start menu (favorites, frequent apps, all apps, folders, a layout)
+   - workspace groups (switch, drag to move, folded pills, the "–" group
+     for minimized windows)
+4. After a change to how the bar looks, run `./scripts/render-screenshots.sh`
+   and check the images.
 
 ## Documentation Freshness Policy (Strict)
 
@@ -427,7 +518,9 @@ machine or private setup may enter the tree or the history.
    address; check `git log -1 --format=%ae` before pushing.
 2. No employer, university, course or client names anywhere: code, tests,
    docs, commit messages.
-3. Test fixtures and examples use made-up data. Do not paste captured window
+3. Test fixtures, examples and screenshots use made-up data. Documentation
+   images come from `scripts/render-screenshots.sh`, never from a screen
+   capture. Do not paste captured window
    titles, app lists, folder names or CLI output from a real machine without
    replacing the titles and names.
 4. No real home-directory paths (`/Users/<name>/...`); use `~`, `/Users/me`

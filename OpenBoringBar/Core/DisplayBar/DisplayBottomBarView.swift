@@ -55,6 +55,10 @@ struct DisplayBottomBarView: View {
     let onAutoCollapseToggled: (Bool) -> Void
     let onHidesOffScreenWindowsToggled: (Bool) -> Void
     let onRequestQuit: () -> Void
+    /// Draw the idle-pin stack / the folded pills unfolded without a pointer
+    /// over them. Only for rendered documentation images.
+    var showsPinStackUnfolded = false
+    var showsPillsUnfolded = false
 
     @State private var isApplicationLauncherPresented = false
 
@@ -92,6 +96,7 @@ struct DisplayBottomBarView: View {
                     DisplayBarPinnedStrip(
                         pinnedApps: pinnedApps,
                         runningApps: runningUnpinnedApps,
+                        isAlwaysUnfolded: showsPinStackUnfolded,
                         maxWidth: pinStripMaxWidth,
                         onOpen: onOpenPinnedApp,
                         onShowMenu: onShowPinMenu
@@ -201,7 +206,7 @@ struct DisplayBottomBarView: View {
     private func appPills(foldsIdle: Bool) -> some View {
         DisplayBarPillRow(
             apps: apps,
-            foldsIdle: foldsIdle,
+            foldsIdle: foldsIdle && !showsPillsUnfolded,
             onSwitch: onSwitch,
             onHoverChanged: onAppHoverChanged,
             onShowAppMenu: onShowAppMenu
@@ -477,12 +482,16 @@ private struct DisplayBarPinnedStrip: View {
     let pinnedApps: [PinnedAppItem]
     /// Running apps that are not pinned, drawn after the pins like in the Dock.
     let runningApps: [PinnedAppItem]
+    /// Unfolded without a pointer over it (rendered documentation images).
+    var isAlwaysUnfolded = false
     let maxWidth: CGFloat
     let onOpen: (PinnedAppItem) -> Void
     let onShowMenu: (PinnedAppItem, Set<PinMove>, NSEvent, NSView) -> Void
 
-    @State private var isStackExpanded = false
+    @State private var isHoverExpanded = false
     @State private var unfoldTask: Task<Void, Never>?
+
+    private var isStackExpanded: Bool { isHoverExpanded || isAlwaysUnfolded }
 
     var body: some View {
         let isRunning = pinnedApps.map(\.isRunning)
@@ -576,18 +585,18 @@ private struct DisplayBarPinnedStrip: View {
                 return
             }
             withAnimation(Self.stackAnimation) {
-                isStackExpanded = true
+                isHoverExpanded = true
             }
         }
     }
 
     private func fold() {
         unfoldTask?.cancel()
-        guard isStackExpanded else {
+        guard isHoverExpanded else {
             return
         }
         withAnimation(Self.stackAnimation) {
-            isStackExpanded = false
+            isHoverExpanded = false
         }
     }
 }
@@ -690,7 +699,7 @@ private struct DisplayBarAppPill: View {
     var body: some View {
         Button(action: { onSwitch(app) }) {
             HStack(spacing: 8) {
-                DisplayBarAppIcon(processID: app.processID)
+                DisplayBarAppIcon(processID: app.processID, bundleIdentifier: app.bundleIdentifier)
 
                 if !isCompact {
                     Text(app.name)
@@ -825,8 +834,12 @@ private struct DisplayBarAppNotificationBadge: View {
 
 private struct DisplayBarAppIcon: View {
     let processID: pid_t
+    var bundleIdentifier: String? = nil
 
     private var appIcon: NSImage? {
+        if let bundleIdentifier {
+            return AppIconProvider.shared.icon(forBundleIdentifier: bundleIdentifier)
+        }
         guard let app = NSRunningApplication(processIdentifier: processID) else {
             return nil
         }

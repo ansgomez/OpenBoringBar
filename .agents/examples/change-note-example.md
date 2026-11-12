@@ -17,7 +17,7 @@ Implemented a safer per-display refresh path by separating app-order recomputati
   - permission setup
   - multi-display bar lifecycle
   - capsule app switch
-  - launcher search/launch
+  - Start menu launch
   - bottom guard behavior
 
 ## Docs

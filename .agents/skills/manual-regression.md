@@ -20,16 +20,42 @@ Run these scenarios after successful build.
 - Click capsule items from the bar.
 - Verify frontmost app switches correctly and consistently.
 
-## 4) Application Launcher Open/Search/Launch
+## 4) Start Menu
 
-- Open launcher popover.
-- Search by app name.
-- Launch selected app and verify focus behavior.
+- Click the Start button at the far left.
+- Launch an app from Frequently Used and one from All Applications; verify
+  it opens with focus.
+- Right-click an app icon on the bar, choose Add to Start Menu, and verify it
+  appears under Favorites; remove it again.
+- Open a folder under Folders and under Applications Folder.
 
 ## 5) Bottom Guard Behavior
 
 - Bring frontmost windows to the lower screen edge.
 - Verify guard behavior prevents unintended overlap/conflict with bar.
+
+## 6) Pinned And Running Apps
+
+- Pin an app, quit it, and verify its icon joins the stack of idle pins.
+- Rest the pointer on the stack; verify it unfolds and folds when the pointer
+  leaves the pin strip.
+- Launch an app that is not pinned; verify its icon appears after the pins
+  and leaves when the app quits.
+
+## 7) Workspace Groups (with AeroSpace)
+
+- Click a workspace group, then an icon in another group; verify the switch
+  and the focus.
+- With three windows on a workspace, verify only the focused window has a
+  full pill, and that resting on a folded pill unfolds them.
+- Minimize a window; verify its icon appears in the "–" group at once. Click
+  it and verify the window returns on the current workspace.
+- Drag a pill onto another workspace group and onto the "–" group.
+
+## 8) Documentation Images
+
+- After a visual change, run `./scripts/render-screenshots.sh` and look at
+  the images in `docs/screenshots`.
 
 ## Regression Notes Template
 

@@ -38,7 +38,8 @@ enum MinimizedWindowProvider {
                     processID: processID,
                     appName: appName,
                     title: title,
-                    frame: AXElementInspector.frame(of: window) ?? .zero
+                    frame: AXElementInspector.frame(of: window) ?? .zero,
+                    bundleIdentifier: app.bundleIdentifier
                 ))
             }
         }
