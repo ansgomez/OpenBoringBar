@@ -6,6 +6,43 @@
 
 OpenBoringBar is an open-source alternative to [boringbar.app](https://boringbar.app), focused on delivering a practical macOS bottom taskbar experience for multi-display setups.
 
+## Changes In This Fork
+
+This fork builds on [nagisa77/OpenBoringBar](https://github.com/nagisa77/OpenBoringBar)
+and is tuned for a keyboard-driven setup with the
+[AeroSpace](https://github.com/nikitabobko/AeroSpace) tiling window manager.
+Compared with the original project:
+
+- **AeroSpace workspaces on the bar.** One group per workspace, in
+  number-row order, with click to switch, drag to move a window, and empty
+  workspaces shown as drop targets. Pills follow the workspace on screen and
+  show one pill per window instead of one per app.
+- **Single row.** Start button, pins, workspace groups, folders and stats all
+  fit in one 44 pt row.
+- **Pinned apps, like the Dock.** Pins stay after an app quits; running apps
+  that are not pinned follow after a divider, with or without windows. A pin
+  click stays on the current workspace and opens a new window there instead
+  of jumping elsewhere.
+- **Folded stacks.** Idle pins and the unfocused windows' pills fold into a
+  diagonal stack to save space and unfold when the pointer rests on them.
+- **Minimized windows** get their own **–** group instead of floating over
+  every workspace; minimizing and restoring are instant.
+- **Start menu** (Apple-logo button) with favorites, frequently used apps,
+  all applications, the Applications folder, folders moved off the bar and
+  workspace layout scripts. It replaces the original app launcher search.
+- **Workspace layouts**: scripts that fill a workspace with a set of
+  windows.
+- **Folder widgets** (with Folder Peek import, badges and custom icons) and
+  compact **system stats** (CPU, memory, battery, disk).
+- **Window handling**: clicks never minimize, windows parked off-screen by
+  a tiling manager get no pill, and the "keep windows above the bar" resize
+  no longer fights the tiling manager.
+- **Background app**: no Dock icon, not in Command-Tab.
+- **Tests and tooling**: unit tests for the pure logic, `install.sh` for a
+  stably signed local install, and screenshots rendered from made-up data.
+
+Details for each item are in [Using The Bar](#using-the-bar).
+
 ## Screenshots
 
 All images below are drawn by the app itself from made-up data (invented
